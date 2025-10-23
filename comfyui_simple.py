@@ -11,6 +11,10 @@ class SimpleComfyUIGenerator:
         self.endpoint = endpoint
         self.output_dir = Path("./poc_output/designs")
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        # ComfyUI saves to the main ComfyUI output directory
+        self.comfyui_output_dir = Path("/Volumes/Tikbalang2TB/Users/tikbalang/comfy_env/ComfyUI/output")
+        # FLUX workflow saves to FLUX subdirectory
+        self.comfyui_flux_dir = self.comfyui_output_dir / "FLUX"
 
         # Import the ComfyUI workflow script
         try:
@@ -131,32 +135,69 @@ class SimpleComfyUIGenerator:
             output_filename = f"tshirt_design_{timestamp}.png"
             output_path = self.output_dir / output_filename
 
+            # Generate random seed for unique images
+            seed = random.randint(1, 2**32 - 1)
+            print(f"🎲 Using random seed: {seed}")
+
             # Execute the workflow with our parameters
             result = self.workflow_module.main(
-                text4=workflow['text_prompt'],  # Main prompt
+                text4=workflow['text_prompt'],  # Main prompt (corrected parameter name)
                 text5="",  # Negative prompt (empty)
-                width6=workflow['width'],
-                height7=workflow['height'],
-                steps13=workflow.get('steps', 20),
-                seed12=random.randint(1, 2**32),  # Random seed for variety
-                guidance11=workflow.get('guidance', 4),
-                cfg14=workflow.get('cfg', 1),
-                sampler_name15=workflow.get('sampler_name', 'dpmpp_2m_sde'),
-                scheduler16=workflow.get('scheduler', 'beta'),
-                denoise17=workflow.get('denoise', 1),
-                filename_prefix18=f"POC_{timestamp}",
+                seed12=seed,  # Random seed for unique generation
+                filename_prefix18=f"POC_{timestamp}",  # Corrected parameter name
                 output=str(output_path),  # Direct output path
                 queue_size=1
             )
+            print(f"📊 Workflow result keys: {list(result.keys()) if result else 'None'}")
 
             if result and 'images' in result:
-                print(f"✅ ComfyUI generation successful: {output_filename}")
-                return {
-                    "success": True,
-                    "output_path": str(output_path),
-                    "message": f"Generated via ComfyUI workflow: {output_filename}",
-                    "result_data": result
-                }
+                print(f"✅ ComfyUI generation successful")
+                images_tensor = result['images']
+                print(f"📊 Generated image tensor shape: {images_tensor.shape}")
+
+                # Save tensor to temporary file for organizer to move
+                try:
+                    import torch
+                    from PIL import Image
+                    import numpy as np
+
+                    # Convert tensor to PIL Image
+                    if isinstance(images_tensor, torch.Tensor):
+                        if images_tensor.dim() == 4:  # [batch, height, width, channels]
+                            img_array = images_tensor[0].cpu().numpy()
+                        elif images_tensor.dim() == 3:  # [height, width, channels]
+                            img_array = images_tensor.cpu().numpy()
+                        else:
+                            raise ValueError(f"Unexpected tensor dimensions: {images_tensor.shape}")
+
+                        # Convert to [0,255] range
+                        if img_array.max() <= 1.0:
+                            img_array = (img_array * 255.0).astype(np.uint8)
+                        else:
+                            img_array = np.clip(img_array, 0, 255).astype(np.uint8)
+
+                        # Create PIL Image and save
+                        if img_array.shape[-1] == 3:  # RGB
+                            pil_image = Image.fromarray(img_array, 'RGB')
+                        else:
+                            pil_image = Image.fromarray(img_array, 'RGB')
+
+                        temp_output_path = self.output_dir / output_filename
+                        pil_image.save(str(temp_output_path), 'PNG')
+
+                        return {
+                            "success": True,
+                            "output_path": str(temp_output_path),
+                            "message": f"Generated via ComfyUI workflow",
+                            "result_data": result
+                        }
+
+                except Exception as e:
+                    print(f"❌ Error saving tensor: {str(e)}")
+                    return {
+                        "success": False,
+                        "error": f"Failed to save generated image: {str(e)}"
+                    }
             else:
                 print(f"❌ ComfyUI generation failed: No images in result")
                 return {

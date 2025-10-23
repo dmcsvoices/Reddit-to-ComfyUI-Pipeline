@@ -84,9 +84,20 @@ class POCFileOrganizer:
 
     def get_summary(self):
         """Get summary of generated content"""
+        # Count designs from multiple directories
+        designs_count = 0
+        design_dirs = ["generated_designs", "designs", "images"]
+
+        for dir_name in design_dirs:
+            design_dir = self.base_dir / dir_name
+            if design_dir.exists():
+                designs_count += len(list(design_dir.glob("*.png")))
+                designs_count += len(list(design_dir.glob("*.jpg")))
+                designs_count += len(list(design_dir.glob("*.jpeg")))
+
         summary = {
             "prompts": len(list((self.base_dir / "prompts").glob("*.md"))),
-            "designs": len(list((self.base_dir / "generated_designs").glob("*.png"))),
+            "designs": designs_count,
             "metadata_files": len(list((self.base_dir / "metadata").glob("*.json"))),
             "log_files": len(list((self.base_dir / "logs").glob("*.json")))
         }
