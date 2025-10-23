@@ -1,0 +1,36 @@
+# Reddit-to-ComfyUI Pipeline - Core Dependencies
+# Minimum Python version: 3.8+
+
+# Reddit API Integration
+praw>=7.7.1
+
+# LLM Integration
+lmstudio>=0.2.0
+openai>=1.0.0
+
+# Image Processing
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# HTTP Requests and APIs
+requests>=2.31.0
+
+# Environment Configuration
+python-dotenv>=1.0.0
+
+# Machine Learning (ComfyUI requirement)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# System Utilities
+psutil>=5.9.0
+tqdm>=4.65.0
+
+# Date and Time Processing
+python-dateutil>=2.8.0
+
+# Text Processing
+regex>=2023.0.0
+
+# Progress and Monitoring
+backoff>=2.2.0
