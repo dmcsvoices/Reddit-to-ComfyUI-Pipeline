@@ -18,6 +18,12 @@ import glob
 
 # Import our existing backend modules with error handling
 try:
+    from script_analyzer import ComfyUIScriptAnalyzer, ArgumentInfo, PromptMapping
+except ImportError:
+    print("Warning: Script analyzer not available")
+    ComfyUIScriptAnalyzer = None
+
+try:
     from reddit_collector import get_trending_memes, get_user_subreddit_choice
     REDDIT_AVAILABLE = True
 except ImportError as e:
@@ -386,12 +392,48 @@ class SynthwaveGUI:
 
     def scan_comfyui_scripts(self):
         """Scan for available ComfyUI scripts in the current directory"""
-        script_pattern = "*POC*.py"
-        scripts = glob.glob(script_pattern)
-        self.available_scripts = [script for script in scripts if script != __file__]
+        # Look for all Python files, then filter out GUI files
+        all_py_files = glob.glob("*.py")
 
+        # Files to exclude (GUI files and backend modules)
+        exclude_files = {
+            "synthwave_gui.py",
+            "synthwave_gui_fixed.py",
+            "synthwave_gui_simple.py",
+            "demo_gui.py",
+            "reddit_collector.py",
+            "llm_transformer.py",
+            "comfyui_simple.py",
+            "file_organizer.py",
+            "tshirt_executor.py"
+        }
+
+        # Filter to likely ComfyUI workflow scripts
+        workflow_scripts = []
+        for script in all_py_files:
+            if script not in exclude_files:
+                # Include files that likely contain ComfyUI workflows
+                # Check for common ComfyUI patterns in filename or prioritize POC files
+                if any(keyword in script.lower() for keyword in ['workflow', 'comfy', 'poc', 'tshirt', 'flux']):
+                    workflow_scripts.append(script)
+                else:
+                    # For other .py files, do a quick content check
+                    try:
+                        with open(script, 'r', encoding='utf-8') as f:
+                            content = f.read(200)  # Read first 200 chars
+                            if any(keyword in content.lower() for keyword in ['comfyui', 'workflow', 'queue_prompt']):
+                                workflow_scripts.append(script)
+                    except:
+                        # If we can't read the file, skip it
+                        pass
+
+        self.available_scripts = workflow_scripts
+
+        # Ensure default script is included
         if "tshirtPOC_768x1024.py" not in self.available_scripts:
             self.available_scripts.insert(0, "tshirtPOC_768x1024.py")
+
+        print(f"📜 Found {len(self.available_scripts)} ComfyUI scripts: {self.available_scripts}")
 
     def create_main_interface(self):
         """Create the main tabbed interface"""
@@ -561,6 +603,37 @@ class SynthwaveGUI:
 
         label_font = font.Font(family="Courier New", size=10)
 
+        # Min Score parameter
+        score_frame = tk.Frame(content_frame, bg=SynthwaveColors.SECONDARY)
+        score_frame.pack(fill='x', pady=5)
+
+        tk.Label(
+            score_frame,
+            text="Min Score:",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY,
+            width=12,
+            anchor='w'
+        ).pack(side='left')
+
+        self.min_score_var = tk.IntVar(value=500)
+        score_scale = tk.Scale(
+            score_frame,
+            from_=100,
+            to=5000,
+            orient='horizontal',
+            variable=self.min_score_var,
+            font=('Courier New', 9),
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY,
+            activebackground=SynthwaveColors.TERTIARY_ACCENT,
+            highlightbackground=SynthwaveColors.SECONDARY,
+            troughcolor=SynthwaveColors.BACKGROUND,
+            length=150
+        )
+        score_scale.pack(side='left', padx=(5, 0))
+
         # Max posts parameter (simplified for side-by-side layout)
         posts_frame = tk.Frame(content_frame, bg=SynthwaveColors.SECONDARY)
         posts_frame.pack(fill='x', pady=5)
@@ -579,7 +652,7 @@ class SynthwaveGUI:
         posts_scale = tk.Scale(
             posts_frame,
             from_=3,
-            to=20,
+            to=50,
             orient='horizontal',
             variable=self.max_posts_var,
             font=('Courier New', 9),
@@ -729,6 +802,7 @@ class SynthwaveGUI:
             subreddit = self.subreddit_var.get()
 
         # Get scan parameters
+        min_score = self.min_score_var.get()
         max_posts = self.max_posts_var.get()
         time_filter = self.time_filter_var.get()
 
@@ -742,12 +816,12 @@ class SynthwaveGUI:
         self.scan_results_listbox.insert(tk.END, f"Scanning r/{subreddit} ({time_filter})...")
         self.current_scan_results = []
 
-        print(f"🎯 Scanning r/{subreddit} for {max_posts} posts (time: {time_filter})")
+        print(f"🎯 Scanning r/{subreddit} for {max_posts} posts (min score: {min_score}, time: {time_filter})")
 
         # Start scan in background thread
         self.scan_thread = threading.Thread(
             target=self.run_scan,
-            args=(subreddit, max_posts, time_filter),
+            args=(subreddit, min_score, max_posts, time_filter),
             daemon=True
         )
         self.scan_thread.start()
@@ -760,7 +834,7 @@ class SynthwaveGUI:
         else:
             self.custom_entry.config(state='disabled')
 
-    def run_scan(self, subreddit, max_posts, time_filter):
+    def run_scan(self, subreddit, min_score, max_posts, time_filter):
         """Run the scan in background thread"""
         try:
             # Check if Reddit functionality is available
@@ -771,8 +845,11 @@ class SynthwaveGUI:
                     subreddit_name=subreddit,
                     download_images=True
                 )
-                # Note: The current reddit_collector doesn't support time_filter yet
+                # Note: The current reddit_collector doesn't support min_score and time_filter yet
                 # This would need to be implemented in the backend
+                # For now, we filter results by min_score locally
+                if results:
+                    results = [post for post in results if post.get('score', 0) >= min_score]
             else:
                 # Generate mock data for demo with time filter indication
                 import random
@@ -781,18 +858,22 @@ class SynthwaveGUI:
                 for i in range(max_posts):
                     # Adjust scores based on time filter for demo
                     if time_filter == "hour":
-                        score_range = (500, 2000)
+                        base_range = (500, 2000)
                     elif time_filter == "day":
-                        score_range = (1000, 5000)
+                        base_range = (1000, 5000)
                     elif time_filter == "week":
-                        score_range = (2000, 10000)
+                        base_range = (2000, 10000)
                     else:  # month
-                        score_range = (5000, 20000)
+                        base_range = (5000, 20000)
+
+                    # Ensure score is at least min_score
+                    score_min = max(min_score, base_range[0])
+                    score_max = max(score_min + 100, base_range[1])  # Ensure range is valid
 
                     results.append({
                         'id': f'demo_{time_filter}_{i}',
-                        'title': f'Demo Post {i+1}: {subreddit} trending ({time_filter})',
-                        'score': random.randint(*score_range),
+                        'title': f'Demo Post {i+1}: {subreddit} trending ({time_filter}, min score: {min_score})',
+                        'score': random.randint(score_min, score_max),
                         'url': 'https://demo.url',
                         'created': '2024-01-01T00:00:00',
                         'text_content': f'Demo text {i+1} from {time_filter}',
@@ -1195,6 +1276,8 @@ class SynthwaveGUI:
         """Run ComfyUI execution in background thread"""
         try:
             total_prompts = len(self.generated_prompts)
+            script_name = self.selected_comfyui_script.replace('.py', '')
+
             for i, prompt_data in enumerate(self.generated_prompts):
                 # Update progress
                 self.queue.put({
@@ -1204,8 +1287,20 @@ class SynthwaveGUI:
                     'prompt_title': prompt_data['title']
                 })
 
-                # Execute prompt (simplified - you'd call your ComfyUI execution here)
-                time.sleep(2)  # Simulate processing time
+                try:
+                    # Execute ComfyUI script with correct arguments
+                    success = self.execute_comfyui_script(prompt_data, script_name)
+
+                    if not success:
+                        self.queue.put({
+                            'type': 'error',
+                            'error': f"Failed to execute prompt {i+1}: {prompt_data['title'][:50]}..."
+                        })
+                except Exception as e:
+                    self.queue.put({
+                        'type': 'error',
+                        'error': f"Error executing prompt {i+1}: {str(e)}"
+                    })
 
             self.queue.put({
                 'type': 'comfyui_complete',
@@ -1217,6 +1312,76 @@ class SynthwaveGUI:
                 'type': 'error',
                 'error': f"ComfyUI execution failed: {str(e)}"
             })
+
+    def execute_comfyui_script(self, prompt_data, script_name):
+        """Execute ComfyUI script with dynamically detected arguments"""
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        try:
+            # Read the prompt content from the file
+            prompt_file = prompt_data['file']
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Extract the prompt text (assuming it's in a specific format)
+            # This should match the format used in create_mock_prompt
+            import re
+            prompt_match = re.search(r'## ComfyUI Prompt\s*```([^`]+)```', content, re.DOTALL)
+            if prompt_match:
+                prompt_text = prompt_match.group(1).strip()
+            else:
+                # Fallback: use title as prompt
+                prompt_text = prompt_data['title']
+
+            # Get dynamic arguments using script analyzer
+            if self.script_analyzer:
+                execution_args = self.script_analyzer.get_execution_args(
+                    script_name,
+                    prompt_text,
+                    negative_prompt="",  # Could be made configurable
+                    width=768,
+                    height=1024,
+                    steps=20,
+                    seed=random.randint(1, 2**32 - 1)
+                )
+            else:
+                # Fallback arguments if script analyzer not available
+                execution_args = {
+                    'text4': prompt_text,
+                    'text5': "",
+                    'width6': 768,
+                    'height7': 1024,
+                    'steps13': 20,
+                    'seed12': random.randint(1, 2**32 - 1)
+                }
+
+            # Build command line arguments
+            cmd_args = ['python', self.selected_comfyui_script]
+            for arg_name, arg_value in execution_args.items():
+                cmd_args.extend([f'--{arg_name}', str(arg_value)])
+
+            # Execute the script
+            print(f"🎨 Executing: {' '.join(cmd_args[:5])}... (with {len(execution_args)} args)")
+
+            result = subprocess.run(
+                cmd_args,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode == 0:
+                print(f"✅ ComfyUI script executed successfully")
+                return True
+            else:
+                print(f"❌ ComfyUI script failed: {result.stderr}")
+                return False
+
+        except Exception as e:
+            print(f"❌ Error executing ComfyUI script: {e}")
+            return False
 
     def create_comfyui_config_tab(self):
         """Create the ComfyUI configuration tab"""
@@ -1232,6 +1397,9 @@ class SynthwaveGUI:
 
         # Script Import Section
         self.create_script_import_section(main_container)
+
+        # Prompt Argument Configuration Section
+        self.create_prompt_config_section(main_container)
 
         # Script Preview Section
         self.create_script_preview_section(main_container)
@@ -1325,20 +1493,7 @@ class SynthwaveGUI:
             pady=6,
             command=self.select_script
         )
-        select_btn.pack(side='left', padx=(0, 10))
-
-        refresh_btn = tk.Button(
-            buttons_frame,
-            text="🔄 REFRESH",
-            font=button_font,
-            bg=SynthwaveColors.SECONDARY_ACCENT,
-            fg=SynthwaveColors.BACKGROUND,
-            relief='flat',
-            padx=15,
-            pady=6,
-            command=self.refresh_scripts_list
-        )
-        refresh_btn.pack(side='left')
+        select_btn.pack(side='left')
 
     def create_script_import_section(self, parent):
         """Create script import section"""
@@ -1414,6 +1569,130 @@ class SynthwaveGUI:
         )
         import_btn.pack(anchor='w')
 
+    def create_prompt_config_section(self, parent):
+        """Create prompt argument configuration section"""
+        header_font = font.Font(family="Courier New", size=14, weight="bold")
+        section_label = tk.Label(
+            parent,
+            text="┌─ PROMPT ARGUMENT MAPPING ─┐",
+            font=header_font,
+            fg=SynthwaveColors.TERTIARY_ACCENT,
+            bg=SynthwaveColors.BACKGROUND
+        )
+        section_label.pack(anchor='w', pady=(0, 10))
+
+        config_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        config_container.pack(fill='x', pady=(0, 20), padx=10)
+
+        config_frame = tk.Frame(config_container, bg=SynthwaveColors.SECONDARY)
+        config_frame.pack(fill='x', padx=15, pady=15)
+
+        label_font = font.Font(family="Courier New", size=10)
+        button_font = font.Font(family="Courier New", size=10, weight="bold")
+
+        # Instructions
+        instructions = tk.Label(
+            config_frame,
+            text="Arguments are auto-detected when importing scripts. Manual override available below.",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        instructions.pack(anchor='w', pady=(0, 10))
+
+        # Status label for detection results (auto-updated on import)
+        status_frame = tk.Frame(config_frame, bg=SynthwaveColors.SECONDARY)
+        status_frame.pack(fill='x', pady=(0, 15))
+
+        status_title = tk.Label(
+            status_frame,
+            text="Auto-Detection Status:",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        status_title.pack(side='left')
+
+        self.detection_status_label = tk.Label(
+            status_frame,
+            text="Import a script to auto-detect arguments",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        self.detection_status_label.pack(side='left', padx=(10, 0))
+
+        # Argument selection controls
+        selection_frame = tk.Frame(config_frame, bg=SynthwaveColors.SECONDARY)
+        selection_frame.pack(fill='x', pady=(0, 15))
+
+        # Main prompt argument
+        main_prompt_frame = tk.Frame(selection_frame, bg=SynthwaveColors.SECONDARY)
+        main_prompt_frame.pack(fill='x', pady=(0, 10))
+
+        tk.Label(
+            main_prompt_frame,
+            text="Main Prompt Argument:",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        ).pack(side='left')
+
+        self.main_prompt_var = tk.StringVar()
+        self.main_prompt_combo = ttk.Combobox(
+            main_prompt_frame,
+            textvariable=self.main_prompt_var,
+            font=label_font,
+            width=15,
+            state="readonly"
+        )
+        self.main_prompt_combo.pack(side='left', padx=(10, 0))
+
+        # Negative prompt argument
+        neg_prompt_frame = tk.Frame(selection_frame, bg=SynthwaveColors.SECONDARY)
+        neg_prompt_frame.pack(fill='x', pady=(0, 10))
+
+        tk.Label(
+            neg_prompt_frame,
+            text="Negative Prompt Argument:",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        ).pack(side='left')
+
+        self.neg_prompt_var = tk.StringVar()
+        self.neg_prompt_combo = ttk.Combobox(
+            neg_prompt_frame,
+            textvariable=self.neg_prompt_var,
+            font=label_font,
+            width=15,
+            state="readonly"
+        )
+        self.neg_prompt_combo.pack(side='left', padx=(10, 0))
+
+        # Save configuration button
+        save_frame = tk.Frame(config_frame, bg=SynthwaveColors.SECONDARY)
+        save_frame.pack(fill='x')
+
+        save_btn = tk.Button(
+            save_frame,
+            text="💾 SAVE MAPPING",
+            font=button_font,
+            bg=SynthwaveColors.SUCCESS,
+            fg=SynthwaveColors.BACKGROUND,
+            relief='flat',
+            padx=15,
+            pady=6,
+            command=self.save_prompt_mapping
+        )
+        save_btn.pack(side='left')
+
+        # Initialize script analyzer
+        if ComfyUIScriptAnalyzer:
+            self.script_analyzer = ComfyUIScriptAnalyzer()
+        else:
+            self.script_analyzer = None
+
     def create_script_preview_section(self, parent):
         """Create script preview section"""
         header_font = font.Font(family="Courier New", size=14, weight="bold")
@@ -1468,6 +1747,116 @@ class SynthwaveGUI:
         except ValueError:
             pass
 
+    def auto_detect_arguments_for_script(self, script_name):
+        """Auto-detect prompt arguments for a specific script and return result"""
+        if not self.script_analyzer:
+            return None
+
+        try:
+            # Analyze the specified script
+            arguments, mapping = self.script_analyzer.analyze_script(script_name)
+
+            # Extract text arguments for the combo boxes
+            text_args = [arg.dest for arg in arguments if 'text' in arg.dest.lower()]
+            text_args.sort()
+
+            # Update combo box options
+            self.main_prompt_combo['values'] = text_args
+            self.neg_prompt_combo['values'] = text_args
+
+            # Set suggested values
+            if mapping.main_prompt:
+                self.main_prompt_var.set(mapping.main_prompt)
+            if mapping.negative_prompt:
+                self.neg_prompt_var.set(mapping.negative_prompt)
+
+            # Update status
+            status = f"Found {len(arguments)} args, {len(text_args)} text args"
+            if mapping.main_prompt:
+                status += f" | Main: {mapping.main_prompt}"
+            if mapping.negative_prompt:
+                status += f" | Neg: {mapping.negative_prompt}"
+
+            self.detection_status_label.config(
+                text=status,
+                fg=SynthwaveColors.SUCCESS
+            )
+
+            # Auto-save the mapping
+            script_base = script_name.replace('.py', '')
+            self.script_analyzer.save_mapping(script_base, mapping)
+
+            # Return result for display in import message
+            result = f"Main: {mapping.main_prompt or 'None'}, Neg: {mapping.negative_prompt or 'None'}"
+            return result
+
+        except Exception as e:
+            self.detection_status_label.config(
+                text=f"Error: {str(e)}",
+                fg=SynthwaveColors.WARNING
+            )
+            return None
+
+
+    def save_prompt_mapping(self):
+        """Save the current prompt argument mapping"""
+        if not self.script_analyzer:
+            messagebox.showerror("Error", "Script analyzer not available")
+            return
+
+        if not self.selected_comfyui_script:
+            messagebox.showwarning("Warning", "No script selected")
+            return
+
+        try:
+            # Create mapping from current UI values
+            from script_analyzer import PromptMapping
+            mapping = PromptMapping(
+                main_prompt=self.main_prompt_var.get() or None,
+                negative_prompt=self.neg_prompt_var.get() or None
+            )
+
+            # Save the mapping
+            script_name = self.selected_comfyui_script.replace('.py', '')
+            self.script_analyzer.save_mapping(script_name, mapping)
+
+            messagebox.showinfo("Success", f"Prompt mapping saved for {script_name}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save mapping: {e}")
+
+    def load_prompt_mapping(self, script_name):
+        """Load and display saved prompt mapping for a script"""
+        if not self.script_analyzer:
+            return
+
+        try:
+            mapping = self.script_analyzer.load_mapping(script_name)
+            if mapping:
+                self.main_prompt_var.set(mapping.main_prompt or "")
+                self.neg_prompt_var.set(mapping.negative_prompt or "")
+
+                status = "Loaded saved mapping"
+                if mapping.main_prompt:
+                    status += f" | Main: {mapping.main_prompt}"
+                if mapping.negative_prompt:
+                    status += f" | Neg: {mapping.negative_prompt}"
+
+                self.detection_status_label.config(
+                    text=status,
+                    fg=SynthwaveColors.SUCCESS
+                )
+            else:
+                # Clear UI if no mapping found
+                self.main_prompt_var.set("")
+                self.neg_prompt_var.set("")
+                self.detection_status_label.config(
+                    text="No saved mapping found",
+                    fg=SynthwaveColors.TEXT
+                )
+        except Exception as e:
+            print(f"Error loading mapping: {e}")
+
     def select_script(self):
         """Select a ComfyUI script from the list"""
         selection = self.scripts_listbox.curselection()
@@ -1479,6 +1868,10 @@ class SynthwaveGUI:
 
             # Load script preview
             self.load_script_preview(selected_script)
+
+            # Load prompt mapping for this script
+            script_name = selected_script.replace('.py', '')
+            self.load_prompt_mapping(script_name)
 
             messagebox.showinfo("Success", f"Selected script: {selected_script}")
         else:
@@ -1514,10 +1907,77 @@ class SynthwaveGUI:
             destination = Path(source_path.name)
             shutil.copy2(source_path, destination)
 
+            # Store the imported script name for auto-selection
+            imported_script_name = source_path.name
+
+            print(f"📥 Imported script: {imported_script_name}")
+            print(f"📂 File exists at destination: {destination.exists()}")
+
             # Refresh scripts list
             self.refresh_scripts_list()
 
-            messagebox.showinfo("Success", f"Imported script: {source_path.name}")
+            print(f"📋 Available scripts after refresh: {self.available_scripts}")
+
+            # Auto-select the newly imported script
+            if imported_script_name in self.available_scripts:
+                try:
+                    script_index = self.available_scripts.index(imported_script_name)
+                    self.scripts_listbox.selection_set(script_index)
+                    self.scripts_listbox.see(script_index)
+
+                    # Set as current script
+                    self.selected_comfyui_script = imported_script_name
+                    self.current_script_display.config(text=imported_script_name)
+                    self.current_script_label.config(text=f"Script: {imported_script_name}")
+
+                    # Load script preview
+                    self.load_script_preview(imported_script_name)
+
+                    # Auto-detect arguments for the imported script
+                    detection_result = self.auto_detect_arguments_for_script(imported_script_name)
+
+                    success_msg = f"✅ Imported and selected script: {imported_script_name}"
+                    if detection_result:
+                        success_msg += f"\n🔍 Detected arguments: {detection_result}"
+
+                    messagebox.showinfo("Success", success_msg)
+                    print(f"✅ Successfully auto-selected: {imported_script_name}")
+                except Exception as e:
+                    print(f"❌ Error during auto-selection: {e}")
+                    messagebox.showinfo("Success", f"✅ Imported script: {imported_script_name}\n⚠️ Auto-selection failed: {e}")
+            else:
+                # Script not detected by our filters - force add it
+                print(f"⚠️ Script not detected by filters, force-adding: {imported_script_name}")
+                self.available_scripts.append(imported_script_name)
+                self.scripts_listbox.insert(tk.END, imported_script_name)
+
+                # Now select it
+                try:
+                    script_index = len(self.available_scripts) - 1
+                    self.scripts_listbox.selection_set(script_index)
+                    self.scripts_listbox.see(script_index)
+
+                    # Set as current script
+                    self.selected_comfyui_script = imported_script_name
+                    self.current_script_display.config(text=imported_script_name)
+                    self.current_script_label.config(text=f"Script: {imported_script_name}")
+
+                    # Load script preview
+                    self.load_script_preview(imported_script_name)
+
+                    # Auto-detect arguments for the imported script
+                    detection_result = self.auto_detect_arguments_for_script(imported_script_name)
+
+                    success_msg = f"✅ Imported and selected script: {imported_script_name}\n(Force-added to list)"
+                    if detection_result:
+                        success_msg += f"\n🔍 Detected arguments: {detection_result}"
+
+                    messagebox.showinfo("Success", success_msg)
+                    print(f"✅ Force-added and selected: {imported_script_name}")
+                except Exception as e:
+                    print(f"❌ Error during force-selection: {e}")
+                    messagebox.showwarning("Partial Success", f"✅ Imported script: {imported_script_name}\n❌ Could not auto-select: {e}")
+
             self.import_file_var.set("")
 
         except Exception as e:

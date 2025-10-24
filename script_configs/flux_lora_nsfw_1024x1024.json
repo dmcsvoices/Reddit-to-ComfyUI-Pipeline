@@ -1,0 +1,8 @@
+{
+  "main_prompt": "text2",
+  "negative_prompt": "text6",
+  "width": null,
+  "height": null,
+  "steps": null,
+  "seed": null
+}
