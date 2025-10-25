@@ -424,6 +424,77 @@ class SynthwaveGUI:
 
         print(f"📜 Found {len(self.available_scripts)} ComfyUI scripts: {self.available_scripts}")
 
+    def validate_comfyui_script(self, script_path):
+        """Validate that script is compatible with module import"""
+        try:
+            if not Path(script_path).exists():
+                return False, "Script file does not exist"
+
+            with open(script_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Check for required components
+            has_main_function = 'def main(' in content
+            has_saveimage = 'SaveImage' in content or 'saveimage' in content.lower()
+            has_return_dict = 'return dict(' in content
+
+            # Check for ComfyUI patterns
+            has_comfyui_patterns = any(pattern in content.lower() for pattern in [
+                'comfyui', 'workflow', 'queue_prompt', 'get_value_at_index'
+            ])
+
+            # Check for common SaveAsScript bugs: missing variable initializations
+            has_manager_usage = 'if has_manager:' in content
+            has_manager_init = 'has_manager = False' in content or 'has_manager = True' in content
+
+            custom_nodes_usage = '_custom_nodes_imported' in content
+            custom_nodes_init = '_custom_nodes_imported = False' in content or '_custom_nodes_imported = True' in content
+
+            custom_path_usage = '_custom_path_added' in content
+            custom_path_init = '_custom_path_added = False' in content or '_custom_path_added = True' in content
+
+            issues = []
+            warnings = []
+
+            if not has_main_function:
+                issues.append("Missing 'def main(' function")
+            if not has_saveimage:
+                issues.append("No SaveImage node detected")
+            if not has_return_dict:
+                issues.append("Missing 'return dict(' statement")
+            if not has_comfyui_patterns:
+                issues.append("No ComfyUI patterns detected")
+
+            # Check for SaveAsScript bugs (warnings, not errors - we can fix these)
+            auto_fixable = []
+            if has_manager_usage and not has_manager_init:
+                auto_fixable.append("has_manager")
+            if custom_nodes_usage and not custom_nodes_init:
+                auto_fixable.append("_custom_nodes_imported")
+            if custom_path_usage and not custom_path_init:
+                auto_fixable.append("_custom_path_added")
+
+            if auto_fixable:
+                warnings.append(f"Missing variable initializations: {', '.join(auto_fixable)} (will be auto-fixed)")
+
+            if issues:
+                return False, "; ".join(issues)
+            else:
+                message = "Script appears compatible"
+                if warnings:
+                    message += f" (warnings: {'; '.join(warnings)})"
+                return True, message
+
+        except Exception as e:
+            return False, f"Error reading script: {str(e)}"
+
+    def clear_module_cache(self, module_name):
+        """Clear cached module to force reload"""
+        import sys
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+            print(f"🔄 Cleared cached module: {module_name}")
+
     def create_main_interface(self):
         """Create the main tabbed interface"""
         # Main container
@@ -1281,14 +1352,30 @@ class SynthwaveGUI:
             })
 
     def execute_comfyui_script(self, prompt_data, script_name):
-        """Execute ComfyUI script as imported module (WORKING APPROACH)"""
+        """Execute ComfyUI script as imported module (ENHANCED WITH ALL IMPROVEMENTS)"""
         import random
         import importlib.util
         import sys
+        import importlib
         from pathlib import Path
 
         try:
-            # Read the prompt content from the file
+            # Step 1: Validate script compatibility before execution
+            script_path = Path(self.selected_comfyui_script)
+            if not script_path.exists():
+                print(f"❌ Script not found: {script_path}")
+                return False
+
+            # Validate script is compatible with module import
+            is_valid, validation_message = self.validate_comfyui_script(script_path)
+            if not is_valid:
+                print(f"❌ Script validation failed: {validation_message}")
+                print(f"   This script may not be compatible with SaveAsScript module import")
+                return False
+
+            print(f"✅ Script validation passed: {validation_message}")
+
+            # Step 2: Read and extract prompt content
             prompt_file = prompt_data['file']
             with open(prompt_file, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -1302,7 +1389,7 @@ class SynthwaveGUI:
                 # Fallback: use title as prompt
                 prompt_text = prompt_data['title']
 
-            # Get script arguments from analyzer or use defaults
+            # Step 3: Prepare execution arguments
             if self.script_analyzer:
                 execution_args = self.script_analyzer.get_execution_args(
                     script_name,
@@ -1327,33 +1414,247 @@ class SynthwaveGUI:
             print(f"🎨 Executing ComfyUI script as module: {self.selected_comfyui_script}")
             print(f"   Arguments: {len(execution_args)} parameters")
 
-            # Import and execute the ComfyUI script as a module
-            script_path = Path(self.selected_comfyui_script)
-            if not script_path.exists():
-                print(f"❌ Script not found: {script_path}")
+            # Step 4: Enhanced module loading with unique names and reload support
+            # Fix: Use unique module name based on script filename to avoid caching issues
+            module_name = f"comfyui_script_{script_path.stem}"
+
+            # Clear any cached version to force reload
+            self.clear_module_cache(module_name)
+
+            # Load the module with unique name
+            spec = importlib.util.spec_from_file_location(module_name, script_path)
+            if spec is None:
+                print(f"❌ Failed to create module spec for: {script_path}")
                 return False
 
-            # Load the module
-            spec = importlib.util.spec_from_file_location("comfyui_script", script_path)
             module = importlib.util.module_from_spec(spec)
+            if module is None:
+                print(f"❌ Failed to create module from spec for: {script_path}")
+                return False
 
-            # Execute the script with arguments
+            # Step 5: Execute the script with enhanced error handling
             try:
+                # Execute the module
                 spec.loader.exec_module(module)
 
+                # Fix: Ensure common SaveAsScript variables are defined (common bugs)
+                fixes_applied = []
+                if not hasattr(module, 'has_manager'):
+                    module.has_manager = False
+                    fixes_applied.append("has_manager")
+
+                # Additional common fixes for SaveAsScript issues
+                if not hasattr(module, '_custom_nodes_imported'):
+                    module._custom_nodes_imported = False
+                    fixes_applied.append("_custom_nodes_imported")
+
+                if not hasattr(module, '_custom_path_added'):
+                    module._custom_path_added = False
+                    fixes_applied.append("_custom_path_added")
+
+                if fixes_applied:
+                    print(f"🔧 Auto-fixed missing variables: {', '.join(fixes_applied)}")
+
+                # Verify the main function exists
+                if not hasattr(module, 'main'):
+                    print(f"❌ Script does not have a 'main' function")
+                    return False
+
                 # Call the main function with our arguments
+                print(f"🔧 Calling main function with {len(execution_args)} arguments...")
                 result = module.main(**execution_args)
 
                 print(f"✅ ComfyUI script executed successfully")
-                print(f"   Result: {type(result)}")
-                return True
+                print(f"   Result type: {type(result)}")
 
-            except Exception as e:
-                print(f"❌ Script execution failed: {e}")
+                # Step 6: Enhanced result processing and image saving
+                if isinstance(result, dict):
+                    if 'images' in result:
+                        # Extract data from result
+                        images = result['images']
+                        filename_prefix = result.get('filename_prefix', 'synthwave_generated')
+                        prompt_data_for_save = result.get('prompt', {})
+
+                        # Enhanced image count reporting
+                        image_count = len(images) if hasattr(images, '__len__') else 1
+                        print(f"💾 Saving {image_count} generated image(s)...")
+
+                        # Method 1: Try ComfyUI's native SaveImage
+                        try:
+                            # Find ComfyUI directory and add to path
+                            comfy_paths = [
+                                "/Volumes/Tikbalang2TB/Users/tikbalang/comfy_env/ComfyUI",  # Known path
+                                str(Path.cwd().parent),  # Parent directory
+                                str(Path.cwd()),  # Current directory
+                            ]
+
+                            comfyui_found = False
+                            for comfy_path in comfy_paths:
+                                comfy_extras_path = Path(comfy_path) / "comfy_extras"
+                                if comfy_extras_path.exists():
+                                    if str(comfy_path) not in sys.path:
+                                        sys.path.insert(0, str(comfy_path))
+                                    print(f"🔍 Using ComfyUI path: {comfy_path}")
+                                    comfyui_found = True
+                                    break
+
+                            if comfyui_found:
+                                from comfy_extras.nodes_saveimage import SaveImage
+                                saveimage = SaveImage()
+
+                                # Add timestamp to filename_prefix for uniqueness
+                                import time
+                                timestamp = int(time.time() * 1000)  # Millisecond timestamp
+                                unique_prefix = f"{filename_prefix}_{timestamp}"
+                                print(f"🔧 Using unique filename prefix: {unique_prefix}")
+
+                                # Save the images using ComfyUI's save function
+                                saved_result = saveimage.save_images(
+                                    filename_prefix=unique_prefix,
+                                    images=images,
+                                    prompt=prompt_data_for_save
+                                )
+
+                                # Enhanced saved file reporting
+                                if 'ui' in saved_result and 'images' in saved_result['ui']:
+                                    saved_files = saved_result['ui']['images']
+                                    print(f"📁 Images saved successfully via ComfyUI:")
+                                    for i, img_info in enumerate(saved_files, 1):
+                                        filename = img_info.get('filename', f'image_{i}')
+                                        subfolder = img_info.get('subfolder', '')
+                                        if subfolder:
+                                            filepath = f"{subfolder}/{filename}"
+                                        else:
+                                            filepath = filename
+                                        print(f"   {i}. {filepath}")
+                                else:
+                                    print(f"📁 Images saved with result: {saved_result}")
+
+                                return True
+                            else:
+                                raise ImportError("ComfyUI path not found")
+
+                        except ImportError as import_error:
+                            print(f"⚠️ ComfyUI SaveImage not available: {import_error}")
+                            print(f"   Falling back to direct tensor saving...")
+
+                            # Method 2: Fallback - Direct tensor to image saving
+                            try:
+                                import torch
+                                from PIL import Image
+                                import numpy as np
+
+                                # Create output directory
+                                output_dir = Path("output") / "synthwave_generated"
+                                output_dir.mkdir(parents=True, exist_ok=True)
+
+                                saved_files = []
+
+                                # Convert tensor images to PIL and save
+                                for i, img_tensor in enumerate(images):
+                                    # Convert from torch tensor to numpy array
+                                    if hasattr(img_tensor, 'cpu'):
+                                        img_array = img_tensor.cpu().numpy()
+                                    else:
+                                        img_array = np.array(img_tensor)
+
+                                    # Ensure proper format (0-255, uint8)
+                                    if img_array.max() <= 1.0:
+                                        img_array = (img_array * 255).astype(np.uint8)
+                                    else:
+                                        img_array = img_array.astype(np.uint8)
+
+                                    # Handle different tensor shapes
+                                    if len(img_array.shape) == 4:  # (batch, height, width, channels)
+                                        img_array = img_array[0]
+                                    if len(img_array.shape) == 3 and img_array.shape[0] in [1, 3, 4]:  # (channels, height, width)
+                                        img_array = np.transpose(img_array, (1, 2, 0))
+
+                                    # Create PIL Image
+                                    if img_array.shape[-1] == 1:  # Grayscale
+                                        pil_img = Image.fromarray(img_array.squeeze(), mode='L')
+                                    elif img_array.shape[-1] == 3:  # RGB
+                                        pil_img = Image.fromarray(img_array, mode='RGB')
+                                    elif img_array.shape[-1] == 4:  # RGBA
+                                        pil_img = Image.fromarray(img_array, mode='RGBA')
+                                    else:
+                                        # Default to RGB by taking first 3 channels
+                                        pil_img = Image.fromarray(img_array[:, :, :3], mode='RGB')
+
+                                    # Generate unique filename to prevent overwrites
+                                    import time
+                                    base_name = filename_prefix.replace('/', '_')
+                                    timestamp = int(time.time() * 1000)  # Millisecond timestamp for uniqueness
+
+                                    # Try basic filename first
+                                    base_filename = f"{base_name}_{i+1:05d}_{timestamp}.png"
+                                    filepath = output_dir / base_filename
+
+                                    # If file exists, increment counter until we find a unique name
+                                    counter = 0
+                                    while filepath.exists():
+                                        counter += 1
+                                        unique_filename = f"{base_name}_{i+1:05d}_{timestamp}_{counter:03d}.png"
+                                        filepath = output_dir / unique_filename
+
+                                    print(f"🔧 Saving to unique filename: {filepath.name}")
+
+                                    # Save the image
+                                    pil_img.save(filepath)
+                                    saved_files.append(str(filepath))
+
+                                print(f"📁 Images saved successfully via fallback method:")
+                                for i, filepath in enumerate(saved_files, 1):
+                                    print(f"   {i}. {filepath}")
+
+                                return True
+
+                            except Exception as fallback_error:
+                                print(f"❌ Fallback image saving failed: {fallback_error}")
+                                print(f"   Raw result available but not saved to disk")
+                                print(f"   Result structure: {list(result.keys())}")
+                                print(f"   Images tensor info: type={type(images)}, shape={getattr(images, 'shape', 'no shape attr')}")
+                                return True  # Still return True since generation succeeded
+
+                        except Exception as save_error:
+                            print(f"⚠️ Image generation succeeded but saving failed: {save_error}")
+                            print(f"   Raw result available but not saved to disk")
+                            print(f"   Result structure: {list(result.keys())}")
+                            return True  # Still return True since generation succeeded
+                    else:
+                        # Enhanced error reporting for SaveAsScript issues
+                        available_keys = list(result.keys())
+                        print(f"⚠️ No 'images' key found in result")
+                        print(f"   Available keys: {available_keys}")
+                        if 'ui' in available_keys:
+                            print(f"   UI structure: {result['ui'] if isinstance(result.get('ui'), dict) else type(result.get('ui'))}")
+                        print(f"   This may indicate a SaveAsScript compatibility issue")
+                        return True  # Still consider it a success since script ran
+                else:
+                    print(f"❌ Expected dict result but got: {type(result)}")
+                    print(f"   This indicates the script is not properly configured for module import")
+                    return False
+
+            except AttributeError as attr_error:
+                print(f"❌ Script attribute error: {attr_error}")
+                print(f"   This may indicate missing SaveAsScript export features")
+                return False
+            except TypeError as type_error:
+                print(f"❌ Script type error: {type_error}")
+                print(f"   This may indicate incorrect argument mapping")
+                print(f"   Expected arguments: {list(execution_args.keys())}")
+                return False
+            except Exception as exec_error:
+                print(f"❌ Script execution failed: {exec_error}")
+                print(f"   Error type: {type(exec_error).__name__}")
                 return False
 
-        except Exception as e:
-            print(f"❌ Error executing ComfyUI script: {e}")
+        except FileNotFoundError as file_error:
+            print(f"❌ File not found: {file_error}")
+            return False
+        except Exception as general_error:
+            print(f"❌ Unexpected error executing ComfyUI script: {general_error}")
+            print(f"   Error type: {type(general_error).__name__}")
             return False
 
     def create_comfyui_config_tab(self):
@@ -1876,6 +2177,20 @@ class SynthwaveGUI:
                 messagebox.showerror("Error", "Selected file does not exist")
                 return
 
+            # Step 1: Validate script before importing
+            is_valid, validation_message = self.validate_comfyui_script(source_path)
+            if not is_valid:
+                # Show validation warning but allow import anyway
+                result = messagebox.askyesno(
+                    "Script Validation Warning",
+                    f"Script validation failed: {validation_message}\n\n"
+                    "This script may not be compatible with SaveAsScript module import.\n"
+                    "Do you want to import it anyway?"
+                )
+                if not result:
+                    print(f"❌ Script import cancelled due to validation issues")
+                    return
+
             # Copy to current directory
             destination = Path(source_path.name)
             shutil.copy2(source_path, destination)
@@ -1885,6 +2200,13 @@ class SynthwaveGUI:
 
             print(f"📥 Imported script: {imported_script_name}")
             print(f"📂 File exists at destination: {destination.exists()}")
+
+            # Validate the copied script for final confirmation
+            is_valid_copy, copy_validation_message = self.validate_comfyui_script(destination)
+            if is_valid_copy:
+                print(f"✅ Script validation passed: {copy_validation_message}")
+            else:
+                print(f"⚠️ Script validation warning: {copy_validation_message}")
 
             # Refresh scripts list
             self.refresh_scripts_list()
@@ -1910,6 +2232,10 @@ class SynthwaveGUI:
                     detection_result = self.auto_detect_arguments_for_script(imported_script_name)
 
                     success_msg = f"✅ Imported and selected script: {imported_script_name}"
+                    if is_valid_copy:
+                        success_msg += f"\n✅ Validation: {copy_validation_message}"
+                    else:
+                        success_msg += f"\n⚠️ Validation: {copy_validation_message}"
                     if detection_result:
                         success_msg += f"\n🔍 Detected arguments: {detection_result}"
 
@@ -1942,6 +2268,10 @@ class SynthwaveGUI:
                     detection_result = self.auto_detect_arguments_for_script(imported_script_name)
 
                     success_msg = f"✅ Imported and selected script: {imported_script_name}\n(Force-added to list)"
+                    if is_valid_copy:
+                        success_msg += f"\n✅ Validation: {copy_validation_message}"
+                    else:
+                        success_msg += f"\n⚠️ Validation: {copy_validation_message}"
                     if detection_result:
                         success_msg += f"\n🔍 Detected arguments: {detection_result}"
 
