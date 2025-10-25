@@ -37,12 +37,8 @@ except ImportError as e:
     print(f"⚠️ LLM transformer not available: {e}")
     LLM_AVAILABLE = False
 
-try:
-    from comfyui_simple import SimpleComfyUIGenerator
-    COMFYUI_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ ComfyUI simple not available: {e}")
-    COMFYUI_AVAILABLE = False
+# ComfyUI-SaveAsScript approach - no imports needed, direct script execution
+COMFYUI_AVAILABLE = True  # Always available since we execute scripts directly
 
 try:
     from file_organizer import POCFileOrganizer
@@ -238,6 +234,7 @@ class SynthwaveGUI:
         # GUI state
         self.current_scan_results = []
         self.generated_prompts = []
+        self.current_session_prompts = []  # Prompts from current scan session only
         self.selected_comfyui_script = "tshirtPOC_768x1024.py"
         self.available_scripts = []
 
@@ -364,17 +361,9 @@ class SynthwaveGUI:
             print("❌ LLM transformer not available (demo mode)")
             self.llm_transformer = None
 
-        # Initialize ComfyUI
-        if COMFYUI_AVAILABLE:
-            try:
-                self.comfyui = SimpleComfyUIGenerator()
-                print("✅ ComfyUI generator initialized")
-            except Exception as e:
-                print(f"❌ ComfyUI generator failed: {e}")
-                self.comfyui = None
-        else:
-            print("❌ ComfyUI generator not available (demo mode)")
-            self.comfyui = None
+        # ComfyUI-SaveAsScript approach - no initialization needed
+        self.comfyui = None  # Not needed - we execute scripts directly
+        print("✅ ComfyUI script execution ready (SaveAsScript approach)")
 
         # Scan for available ComfyUI scripts
         self.scan_comfyui_scripts()
@@ -383,7 +372,7 @@ class SynthwaveGUI:
         available_count = sum([
             self.file_organizer is not None,
             self.llm_transformer is not None,
-            self.comfyui is not None
+            True  # ComfyUI scripts always available
         ])
         print(f"🎯 Backend initialization complete: {available_count}/3 modules available")
 
@@ -815,6 +804,7 @@ class SynthwaveGUI:
         self.scan_results_listbox.delete(0, tk.END)
         self.scan_results_listbox.insert(tk.END, f"Scanning r/{subreddit} ({time_filter})...")
         self.current_scan_results = []
+        self.current_session_prompts = []  # Clear prompts from previous scan
 
         print(f"🎯 Scanning r/{subreddit} for {max_posts} posts (min score: {min_score}, time: {time_filter})")
 
@@ -1164,62 +1154,38 @@ class SynthwaveGUI:
         self.overall_progress.pack(side='right', fill='x', expand=True, padx=(10, 0))
 
     def refresh_prompts(self):
-        """Refresh the prompts list from files"""
+        """Refresh the prompts list from current scan session"""
         try:
             # Clear current items
             for item in self.prompts_tree.get_children():
                 self.prompts_tree.delete(item)
 
-            # Scan for prompt files
-            prompts_dir = Path("poc_output/prompts")
-            if prompts_dir.exists():
-                prompt_files = list(prompts_dir.glob("*.md"))
-                self.generated_prompts = []
+            # Use prompts from current scan session only (not from files)
+            self.generated_prompts = self.current_session_prompts.copy()
 
-                for prompt_file in prompt_files:
-                    # Read prompt metadata
-                    try:
-                        with open(prompt_file, 'r', encoding='utf-8') as f:
-                            content = f.read()
+            for prompt_data in self.current_session_prompts:
+                reddit_id = prompt_data.get('reddit_id', 'unknown')
+                title = prompt_data.get('title', 'Unknown Title')
+                score = prompt_data.get('score', '0')
 
-                        # Parse metadata from markdown
-                        import re
-                        reddit_id_match = re.search(r'Reddit ID: (\w+)', content)
-                        title_match = re.search(r'Original Title: (.+)', content)
-                        score_match = re.search(r'Score: (\d+)', content)
+                # Check if design exists
+                design_exists = self.check_design_exists(reddit_id)
+                status = "✓ Complete" if design_exists else "⏳ Pending"
 
-                        reddit_id = reddit_id_match.group(1) if reddit_id_match else "unknown"
-                        title = title_match.group(1) if title_match else prompt_file.name
-                        score = score_match.group(1) if score_match else "0"
+                # Update status in the prompt data
+                prompt_data['status'] = status
 
-                        # Check if design exists
-                        design_exists = self.check_design_exists(reddit_id)
-                        status = "✓ Complete" if design_exists else "⏳ Pending"
-
-                        prompt_data = {
-                            'file': prompt_file,
-                            'reddit_id': reddit_id,
-                            'title': title,
-                            'score': score,
-                            'status': status
-                        }
-
-                        self.generated_prompts.append(prompt_data)
-
-                        # Add to treeview
-                        self.prompts_tree.insert('', 'end', values=(
-                            status,
-                            f"r/{reddit_id[:8]}...",
-                            title[:50] + "..." if len(title) > 50 else title,
-                            score,
-                            prompt_file.stat().st_mtime
-                        ))
-
-                    except Exception as e:
-                        print(f"Error reading prompt file {prompt_file}: {e}")
+                # Add to treeview
+                self.prompts_tree.insert('', 'end', values=(
+                    status,
+                    f"r/{reddit_id[:8]}...",
+                    title[:50] + "..." if len(title) > 50 else title,
+                    score,
+                    "Recent"  # Show "Recent" instead of file timestamp
+                ))
 
             # Update count
-            count = len(self.generated_prompts)
+            count = len(self.current_session_prompts)
             self.prompts_count_label.config(text=f"Prompts: {count}")
 
             # Enable execution if prompts exist
@@ -1243,6 +1209,7 @@ class SynthwaveGUI:
             for item in self.prompts_tree.get_children():
                 self.prompts_tree.delete(item)
             self.generated_prompts = []
+            self.current_session_prompts = []  # Also clear current session prompts
             self.prompts_count_label.config(text="Prompts: 0")
             self.start_execution_btn.config(state='disabled')
 
@@ -1314,10 +1281,9 @@ class SynthwaveGUI:
             })
 
     def execute_comfyui_script(self, prompt_data, script_name):
-        """Execute ComfyUI script with dynamically detected arguments"""
+        """Execute ComfyUI script directly via subprocess (CORRECT APPROACH)"""
         import subprocess
-        import tempfile
-        from pathlib import Path
+        import random
 
         try:
             # Read the prompt content from the file
@@ -1325,8 +1291,7 @@ class SynthwaveGUI:
             with open(prompt_file, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            # Extract the prompt text (assuming it's in a specific format)
-            # This should match the format used in create_mock_prompt
+            # Extract the prompt text
             import re
             prompt_match = re.search(r'## ComfyUI Prompt\s*```([^`]+)```', content, re.DOTALL)
             if prompt_match:
@@ -1335,19 +1300,19 @@ class SynthwaveGUI:
                 # Fallback: use title as prompt
                 prompt_text = prompt_data['title']
 
-            # Get dynamic arguments using script analyzer
+            # Get script arguments from analyzer or use defaults
             if self.script_analyzer:
                 execution_args = self.script_analyzer.get_execution_args(
                     script_name,
                     prompt_text,
-                    negative_prompt="",  # Could be made configurable
+                    negative_prompt="",
                     width=768,
                     height=1024,
                     steps=20,
                     seed=random.randint(1, 2**32 - 1)
                 )
             else:
-                # Fallback arguments if script analyzer not available
+                # Default arguments for exported ComfyUI script
                 execution_args = {
                     'text4': prompt_text,
                     'text5': "",
@@ -1357,14 +1322,15 @@ class SynthwaveGUI:
                     'seed12': random.randint(1, 2**32 - 1)
                 }
 
-            # Build command line arguments
+            # Build command to execute exported ComfyUI script directly
             cmd_args = ['python', self.selected_comfyui_script]
             for arg_name, arg_value in execution_args.items():
                 cmd_args.extend([f'--{arg_name}', str(arg_value)])
 
-            # Execute the script
-            print(f"🎨 Executing: {' '.join(cmd_args[:5])}... (with {len(execution_args)} args)")
+            print(f"🎨 Executing ComfyUI script directly: {self.selected_comfyui_script}")
+            print(f"   Arguments: {len(execution_args)} parameters")
 
+            # Execute the exported ComfyUI script
             result = subprocess.run(
                 cmd_args,
                 capture_output=True,
@@ -2363,6 +2329,15 @@ class SynthwaveGUI:
                     try:
                         prompt_result = self.llm_transformer.transform_reddit_to_tshirt_prompt(post)
                         if prompt_result.get('success', False):
+                            # Add LLM-generated prompt to current session prompts (for Results display)
+                            prompt_data = {
+                                'file': Path(prompt_result['prompt_file']),
+                                'reddit_id': post['id'],
+                                'title': post['title'],
+                                'score': str(post['score']),
+                                'status': "⏳ Pending"
+                            }
+                            self.current_session_prompts.append(prompt_data)
                             successful_transforms += 1
                     except Exception as e:
                         print(f"❌ Transform failed for post {post.get('id', 'unknown')}: {e}")
@@ -2433,6 +2408,16 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
             # Save the mock prompt file
             with open(prompt_file, 'w', encoding='utf-8') as f:
                 f.write(prompt_content)
+
+            # Add to current session prompts (for Results display)
+            prompt_data = {
+                'file': prompt_file,
+                'reddit_id': post['id'],
+                'title': post['title'],
+                'score': str(post['score']),
+                'status': "⏳ Pending"
+            }
+            self.current_session_prompts.append(prompt_data)
 
             print(f"✅ Created demo prompt: {prompt_id}")
             return True

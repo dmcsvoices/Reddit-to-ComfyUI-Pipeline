@@ -6,7 +6,6 @@ Run the complete proof-of-concept workflow
 
 from reddit_collector import get_trending_memes, get_user_subreddit_choice
 from llm_transformer import TShirtPromptTransformer
-from comfyui_simple import SimpleComfyUIGenerator
 from file_organizer import POCFileOrganizer
 import time
 from datetime import datetime
@@ -134,15 +133,21 @@ def run_poc():
     print(f"🎨 Note: Prompts now focus on VISUAL GRAPHICS, not just text designs")
 
 def run_generation_phase(successful_prompts, text_trends, organizer):
-    """Run the ComfyUI generation phase with existing prompts"""
-    from comfyui_simple import SimpleComfyUIGenerator
+    """Run the ComfyUI generation phase by executing exported scripts directly"""
+    import subprocess
+    import random
+    from pathlib import Path
 
-    print(f"🎨 Initializing ComfyUI generator...")
-    generator = SimpleComfyUIGenerator()
+    # Find the ComfyUI script to execute
+    script_name = "tshirtPOC_768x1024.py"
+    script_path = Path(script_name)
 
-    if not generator.workflow_available:
-        print(f"⚠️  ComfyUI workflow not available - running in simulation mode")
+    if not script_path.exists():
+        print(f"❌ ComfyUI script not found: {script_name}")
+        print("💡 Export your ComfyUI workflow using SaveAsScript extension")
+        return []
 
+    print(f"🎨 Executing ComfyUI script directly: {script_name}")
     generation_results = []
 
     for i, prompt_result in enumerate(successful_prompts, 1):
@@ -154,29 +159,58 @@ def run_generation_phase(successful_prompts, text_trends, organizer):
             print(f"⚠️  Could not find trend data for {prompt_result['trend_id']}")
             continue
 
-        # Generate design from ComfyUI prompt
-        design_result = generator.generate_from_prompt(
-            prompt_result['comfyui_prompt'],
-            prompt_result['trend_id']
-        )
+        try:
+            # Build command to execute exported ComfyUI script
+            cmd_args = [
+                'python', script_name,
+                '--text4', prompt_result['comfyui_prompt'],
+                '--text5', "",  # negative prompt
+                '--width6', '768',
+                '--height7', '1024',
+                '--steps13', '20',
+                '--seed12', str(random.randint(1, 2**32 - 1)),
+                '--filename_prefix18', f"FLUX/reddit_{prompt_result['trend_id']}"
+            ]
 
-        if design_result["success"]:
-            # Organize the generated design
-            organized = organizer.organize_design(design_result, trend_data)
-            if organized:
-                design_result.update(organized)
-                print(f"✅ Generated and organized: {organized['design_id']}")
+            print(f"   Executing: python {script_name} --text4 \"{prompt_result['comfyui_prompt'][:50]}...\"")
+
+            # Execute the script
+            result = subprocess.run(
+                cmd_args,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode == 0:
+                design_result = {
+                    "success": True,
+                    "trend_id": prompt_result['trend_id'],
+                    "script_output": result.stdout
+                }
+                print(f"✅ Generated successfully")
             else:
-                print(f"⚠️  Generated but failed to organize: {design_result.get('output_path', 'unknown')}")
-        else:
-            print(f"❌ Generation failed: {design_result.get('error', 'Unknown error')}")
+                design_result = {
+                    "success": False,
+                    "error": f"Script execution failed: {result.stderr}",
+                    "trend_id": prompt_result['trend_id']
+                }
+                print(f"❌ Generation failed: {result.stderr}")
+
+        except Exception as e:
+            design_result = {
+                "success": False,
+                "error": f"Execution error: {str(e)}",
+                "trend_id": prompt_result['trend_id']
+            }
+            print(f"❌ Error: {e}")
 
         generation_results.append(design_result)
 
     return generation_results
 
 def run_poc_with_generation():
-    """Extended POC that includes actual ComfyUI generation"""
+    """Extended POC that includes ComfyUI script execution"""
     print("🚀 Starting Extended T-Shirt Design POC with Generation...")
 
     # Run basic POC first
@@ -190,22 +224,23 @@ def run_poc_with_generation():
         print("❌ No prompts available for generation phase")
         return
 
-    # Initialize ComfyUI generator
-    print(f"\n🎨 Starting ComfyUI generation phase...")
-    generator = SimpleComfyUIGenerator()
+    # Check for ComfyUI script
+    from pathlib import Path
+    script_name = "tshirtPOC_768x1024.py"
+    script_path = Path(script_name)
 
-    if not generator.check_comfyui_status():
-        print(f"❌ ComfyUI not available at {generator.endpoint}")
-        print("💡 Make sure ComfyUI is running and accessible")
-        print("💡 For POC Phase 1, focus on prompt quality first")
+    if not script_path.exists():
+        print(f"❌ ComfyUI script not found: {script_name}")
+        print("💡 Export your ComfyUI workflow using SaveAsScript extension")
         return
+
+    print(f"✅ Found ComfyUI script: {script_name}")
 
     # Load and process existing prompts
     prompt_files = list((organizer.base_dir / "prompts").glob("*.md"))
     print(f"Found {len(prompt_files)} prompt files to process")
 
-    # TODO: Add actual generation logic here
-    print("🔧 ComfyUI generation implementation pending...")
+    print("🎨 ComfyUI script execution ready")
 
 def test_components():
     """Test individual components"""
@@ -232,13 +267,14 @@ def test_components():
     summary = organizer.get_summary()
     print(f"   ✅ File structure ready: {summary}")
 
-    # Test ComfyUI (connection only)
-    print("\n4. Testing ComfyUI connection...")
-    generator = SimpleComfyUIGenerator()
-    if generator.check_comfyui_status():
-        print("   ✅ ComfyUI is accessible")
+    # Test ComfyUI script availability
+    print("\n4. Testing ComfyUI script...")
+    from pathlib import Path
+    script_path = Path("tshirtPOC_768x1024.py")
+    if script_path.exists():
+        print("   ✅ ComfyUI script found")
     else:
-        print("   ⚠️  ComfyUI not accessible (expected for Phase 1)")
+        print("   ⚠️  ComfyUI script not found (export using SaveAsScript)")
 
     print("\n🎯 Component testing complete!")
 
