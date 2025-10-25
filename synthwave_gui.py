@@ -1281,9 +1281,11 @@ class SynthwaveGUI:
             })
 
     def execute_comfyui_script(self, prompt_data, script_name):
-        """Execute ComfyUI script directly via subprocess (CORRECT APPROACH)"""
-        import subprocess
+        """Execute ComfyUI script as imported module (WORKING APPROACH)"""
         import random
+        import importlib.util
+        import sys
+        from pathlib import Path
 
         try:
             # Read the prompt content from the file
@@ -1322,27 +1324,32 @@ class SynthwaveGUI:
                     'seed12': random.randint(1, 2**32 - 1)
                 }
 
-            # Build command to execute exported ComfyUI script directly
-            cmd_args = ['python', self.selected_comfyui_script]
-            for arg_name, arg_value in execution_args.items():
-                cmd_args.extend([f'--{arg_name}', str(arg_value)])
-
-            print(f"🎨 Executing ComfyUI script directly: {self.selected_comfyui_script}")
+            print(f"🎨 Executing ComfyUI script as module: {self.selected_comfyui_script}")
             print(f"   Arguments: {len(execution_args)} parameters")
 
-            # Execute the exported ComfyUI script
-            result = subprocess.run(
-                cmd_args,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
+            # Import and execute the ComfyUI script as a module
+            script_path = Path(self.selected_comfyui_script)
+            if not script_path.exists():
+                print(f"❌ Script not found: {script_path}")
+                return False
 
-            if result.returncode == 0:
+            # Load the module
+            spec = importlib.util.spec_from_file_location("comfyui_script", script_path)
+            module = importlib.util.module_from_spec(spec)
+
+            # Execute the script with arguments
+            try:
+                spec.loader.exec_module(module)
+
+                # Call the main function with our arguments
+                result = module.main(**execution_args)
+
                 print(f"✅ ComfyUI script executed successfully")
+                print(f"   Result: {type(result)}")
                 return True
-            else:
-                print(f"❌ ComfyUI script failed: {result.stderr}")
+
+            except Exception as e:
+                print(f"❌ Script execution failed: {e}")
                 return False
 
         except Exception as e:

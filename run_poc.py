@@ -160,42 +160,36 @@ def run_generation_phase(successful_prompts, text_trends, organizer):
             continue
 
         try:
-            # Build command to execute exported ComfyUI script
-            cmd_args = [
-                'python', script_name,
-                '--text4', prompt_result['comfyui_prompt'],
-                '--text5', "",  # negative prompt
-                '--width6', '768',
-                '--height7', '1024',
-                '--steps13', '20',
-                '--seed12', str(random.randint(1, 2**32 - 1)),
-                '--filename_prefix18', f"FLUX/reddit_{prompt_result['trend_id']}"
-            ]
+            # Import and execute the ComfyUI script as a module
+            import importlib.util
 
-            print(f"   Executing: python {script_name} --text4 \"{prompt_result['comfyui_prompt'][:50]}...\"")
+            # Load the module
+            spec = importlib.util.spec_from_file_location("comfyui_script", script_path)
+            module = importlib.util.module_from_spec(spec)
+
+            # Prepare arguments
+            execution_args = {
+                'text4': prompt_result['comfyui_prompt'],
+                'text5': "",  # negative prompt
+                'width6': 768,
+                'height7': 1024,
+                'steps13': 20,
+                'seed12': random.randint(1, 2**32 - 1),
+                'filename_prefix18': f"FLUX/reddit_{prompt_result['trend_id']}"
+            }
+
+            print(f"   Executing as module with prompt: \"{prompt_result['comfyui_prompt'][:50]}...\"")
 
             # Execute the script
-            result = subprocess.run(
-                cmd_args,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
+            spec.loader.exec_module(module)
+            result = module.main(**execution_args)
 
-            if result.returncode == 0:
-                design_result = {
-                    "success": True,
-                    "trend_id": prompt_result['trend_id'],
-                    "script_output": result.stdout
-                }
-                print(f"✅ Generated successfully")
-            else:
-                design_result = {
-                    "success": False,
-                    "error": f"Script execution failed: {result.stderr}",
-                    "trend_id": prompt_result['trend_id']
-                }
-                print(f"❌ Generation failed: {result.stderr}")
+            design_result = {
+                "success": True,
+                "trend_id": prompt_result['trend_id'],
+                "script_result": result
+            }
+            print(f"✅ Generated successfully")
 
         except Exception as e:
             design_result = {
