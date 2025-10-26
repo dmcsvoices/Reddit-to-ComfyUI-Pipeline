@@ -2769,6 +2769,10 @@ class SynthwaveGUI:
                     'post_title': post.get('title', 'Unknown')
                 })
 
+                # Ensure post has usable text content (use title if text_content is empty)
+                if not post.get('text_content') or post['text_content'] == 'N/A':
+                    post['text_content'] = post['title']
+
                 # Transform post to prompt
                 if self.llm_transformer:
                     try:

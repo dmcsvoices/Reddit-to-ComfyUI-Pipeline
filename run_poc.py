@@ -31,19 +31,26 @@ def run_poc():
         print("❌ No trending content found. Check Reddit API credentials.")
         return
 
-    # Step 3: Filter for text-based content
-    text_trends = [t for t in trends if t.get('text_content')]
-    print(f"Found {len(text_trends)} text-based trends suitable for t-shirts")
+    # Step 3: Process all trends (text-only and image posts)
+    # Ensure all posts have usable text content (use title if text_content is empty)
+    for trend in trends:
+        if not trend.get('text_content') or trend['text_content'] == 'N/A':
+            # Use the title as text content for posts without extracted text
+            trend['text_content'] = trend['title']
 
-    if not text_trends:
-        print("❌ No suitable text content found. Try again later.")
-        print("💡 Hint: Look for memes with quotes or short phrases")
+    suitable_trends = trends  # Accept all trends now
+    print(f"Found {len(suitable_trends)} trends suitable for t-shirts (text-only and image posts)")
+
+    if not suitable_trends:
+        print("❌ No suitable content found. Try again later.")
         return
 
     # Show what we found
-    print("\n📋 Text trends found:")
-    for i, trend in enumerate(text_trends[:5], 1):
-        print(f"  {i}. \"{trend['text_content']}\" (Score: {trend['score']})")
+    print("\n📋 Trends found:")
+    for i, trend in enumerate(suitable_trends[:5], 1):
+        text_preview = trend['text_content'][:50] + "..." if len(trend['text_content']) > 50 else trend['text_content']
+        has_images = "📷" if trend.get('images') else "📝"
+        print(f"  {i}. {has_images} \"{text_preview}\" (Score: {trend['score']})")
 
     # Step 4: Initialize components
     print(f"\n🤖 Initializing LLM transformer...")
@@ -54,7 +61,7 @@ def run_poc():
 
     # Step 5: Transform trends to ComfyUI prompts
     print(f"\n🔄 Transforming trends to ComfyUI prompts...")
-    selected_trends = text_trends[:3]  # Just 3 for POC
+    selected_trends = suitable_trends[:3]  # Just 3 for POC
     prompt_results = transformer.batch_transform(selected_trends)
 
     successful_prompts = [r for r in prompt_results if r["success"]]
@@ -77,7 +84,7 @@ def run_poc():
 
     if continue_to_generation in ['y', 'yes']:
         print(f"\n🎨 Starting ComfyUI Generation Phase...")
-        generation_results = run_generation_phase(successful_prompts, text_trends, organizer)
+        generation_results = run_generation_phase(successful_prompts, suitable_trends, organizer)
 
         successful_designs = [r for r in generation_results if r.get('success', False)]
         print(f"\n🎉 Complete POC Workflow Finished!")
@@ -89,7 +96,7 @@ def run_poc():
             "phase": "Complete POC - Prompt Generation + ComfyUI Generation",
             "selected_subreddit": selected_subreddit,
             "trends_collected": len(trends),
-            "text_trends_found": len(text_trends),
+            "trends_found": len(suitable_trends),
             "prompts_generated": len(successful_prompts),
             "designs_generated": len(successful_designs),
             "successful_prompts": [r['prompt_id'] for r in successful_prompts],
@@ -110,7 +117,7 @@ def run_poc():
             "phase": "POC Phase 1 - Visual Prompt Generation",
             "selected_subreddit": selected_subreddit,
             "trends_collected": len(trends),
-            "text_trends_found": len(text_trends),
+            "trends_found": len(suitable_trends),
             "prompts_generated": len(successful_prompts),
             "successful_prompts": [r['prompt_id'] for r in successful_prompts],
             "next_steps": [
@@ -132,7 +139,7 @@ def run_poc():
     print(f"\n✨ Next: Review the generated files to validate quality")
     print(f"🎨 Note: Prompts now focus on VISUAL GRAPHICS, not just text designs")
 
-def run_generation_phase(successful_prompts, text_trends, organizer):
+def run_generation_phase(successful_prompts, suitable_trends, organizer):
     """Run the ComfyUI generation phase by executing exported scripts directly"""
     import subprocess
     import random
@@ -154,7 +161,7 @@ def run_generation_phase(successful_prompts, text_trends, organizer):
         print(f"\n🖼️  Generating design {i}/{len(successful_prompts)}: {prompt_result['prompt_id']}")
 
         # Find corresponding trend data
-        trend_data = next((t for t in text_trends if t['id'] == prompt_result['trend_id']), None)
+        trend_data = next((t for t in suitable_trends if t['id'] == prompt_result['trend_id']), None)
         if not trend_data:
             print(f"⚠️  Could not find trend data for {prompt_result['trend_id']}")
             continue

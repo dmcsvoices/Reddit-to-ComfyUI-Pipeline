@@ -105,14 +105,44 @@ def get_user_subreddit_choice():
             print("❌ Invalid choice. Please enter 1-8 or press Enter for default")
 
 def extract_text_from_title(title):
-    """Extract quotable text or concepts for t-shirt design"""
-    # Simple keyword extraction - look for quoted text or simple phrases
+    """Extract text or concepts for t-shirt design - now more inclusive"""
+    # Look for quoted text first (highest priority)
     if '"' in title:
-        return title.split('"')[1]
-    elif len(title.split()) <= 4:
-        return title
+        quoted_text = title.split('"')[1].strip()
+        if quoted_text:
+            return quoted_text
+
+    # Clean up the title and use it directly for longer titles too
+    # Remove common reddit prefixes and clean up
+    cleaned_title = title.strip()
+
+    # Remove common reddit patterns
+    prefixes_to_remove = [
+        "When ", "TIL ", "LPT:", "PSA:", "[OC]", "[Serious]",
+        "TIFU by ", "ELI5:", "AMA:", "DAE ", "MRW ", "MFW ",
+        "TFW ", "ITT:", "CMV:", "IAMA ", "IAmA "
+    ]
+
+    for prefix in prefixes_to_remove:
+        if cleaned_title.startswith(prefix):
+            cleaned_title = cleaned_title[len(prefix):].strip()
+            break
+
+    # Remove brackets and parentheses content at the end
+    import re
+    cleaned_title = re.sub(r'\s*\[[^\]]*\]\s*$', '', cleaned_title)
+    cleaned_title = re.sub(r'\s*\([^)]*\)\s*$', '', cleaned_title)
+
+    # If it's reasonable length (up to 10 words instead of 4), use it
+    words = cleaned_title.split()
+    if 1 <= len(words) <= 10:
+        return cleaned_title
+    elif len(words) > 10:
+        # For longer titles, try to extract key phrases or use first meaningful part
+        # Take first 8 words as a reasonable excerpt
+        return ' '.join(words[:8]) + '...'
     else:
-        return None
+        return title  # Fallback to original title
 
 if __name__ == "__main__":
     # Test the collector

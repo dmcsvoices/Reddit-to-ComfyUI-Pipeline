@@ -44,13 +44,19 @@ class TShirtPromptTransformer:
                 print(f"⚠️  Image analysis failed: {str(e)}")
                 has_images = False
 
+        # Determine the source of text content for better prompt context
+        text_content = trend_data.get('text_content', 'N/A')
+        title = trend_data['title']
+        text_source = "extracted" if text_content != title else "title"
+
         transformation_prompt = f"""
 You are a professional t-shirt design prompt engineer. Transform this Reddit trend into a detailed ComfyUI prompt for generating a trendy visual t-shirt design.
 
 Reddit Content:
-- Title: {trend_data['title']}
-- Text Content: {trend_data.get('text_content', 'N/A')}
-- Popularity Score: {trend_data['score']}{"" if not has_images else f'''
+- Title: {title}
+- Text Content: {text_content} (source: {text_source})
+- Popularity Score: {trend_data['score']}
+- Content Type: {"Image + Text" if has_images else "Text-only post"}{"" if not has_images else f'''
 - Image Analysis: {image_analysis}'''}
 
 Requirements for the ComfyUI visual design prompt:
