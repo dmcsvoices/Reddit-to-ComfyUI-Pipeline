@@ -520,11 +520,11 @@ class SynthwaveGUI:
         self.notebook = ttk.Notebook(main_container, style="Synthwave.TNotebook")
         self.notebook.pack(fill='both', expand=True)
 
-        # Create tabs (reordered: Scan, Monitor, Config)
+        # Create tabs (reordered: Scan, Config)
         self.create_scan_setup_tab()
-        self.create_workflow_monitor_tab()
         self.create_comfyui_config_tab()
         # Results tab removed - functionality moved to Scan Setup tab
+        # Monitor tab removed - was not providing critical functionality
 
     def create_scan_setup_tab(self):
         """Create the scan setup tab"""
@@ -1416,7 +1416,8 @@ class SynthwaveGUI:
         # Implementation for stopping execution
         self.start_execution_btn.config(state='normal', text="▶ START COMFYUI")
         self.stop_execution_btn.config(state='disabled')
-        self.current_operation_label.config(text="Status: Stopped")
+        if hasattr(self, 'current_operation_label'):
+            self.current_operation_label.config(text="Status: Stopped")
 
     def run_comfyui_execution(self):
         """Run ComfyUI execution in background thread"""
@@ -2426,244 +2427,6 @@ class SynthwaveGUI:
             self.script_preview.insert(1.0, f"Error loading script: {str(e)}")
             self.script_preview.config(state='disabled')
 
-    def create_workflow_monitor_tab(self):
-        """Create the workflow monitoring tab"""
-        monitor_frame = ttk.Frame(self.notebook, style="Synthwave.TFrame")
-        self.notebook.add(monitor_frame, text="WORKFLOW MONITOR")
-
-        # Main container
-        main_container = tk.Frame(monitor_frame, bg=SynthwaveColors.BACKGROUND)
-        main_container.pack(fill='both', expand=True, padx=20, pady=20)
-
-        # Session Overview Section
-        self.create_session_overview(main_container)
-
-        # Real-time Log Section
-        self.create_realtime_log(main_container)
-
-        # System Status Section
-        self.create_system_status(main_container)
-
-    def create_session_overview(self, parent):
-        """Create session overview section"""
-        header_font = font.Font(family="Courier New", size=14, weight="bold")
-        section_label = tk.Label(
-            parent,
-            text="┌─ SESSION OVERVIEW ─┐",
-            font=header_font,
-            fg=SynthwaveColors.PRIMARY_ACCENT,
-            bg=SynthwaveColors.BACKGROUND
-        )
-        section_label.pack(anchor='w', pady=(0, 10))
-
-        overview_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
-        overview_container.pack(fill='x', pady=(0, 20), padx=10)
-
-        overview_frame = tk.Frame(overview_container, bg=SynthwaveColors.SECONDARY)
-        overview_frame.pack(fill='x', padx=15, pady=15)
-
-        label_font = font.Font(family="Courier New", size=10)
-        value_font = font.Font(family="Courier New", size=10, weight="bold")
-
-        # Statistics grid
-        stats_frame = tk.Frame(overview_frame, bg=SynthwaveColors.SECONDARY)
-        stats_frame.pack(fill='x')
-
-        # Row 1
-        row1 = tk.Frame(stats_frame, bg=SynthwaveColors.SECONDARY)
-        row1.pack(fill='x', pady=2)
-
-        tk.Label(row1, text="Reddit Posts Scanned:", font=label_font, fg=SynthwaveColors.TEXT, bg=SynthwaveColors.SECONDARY, width=20, anchor='w').pack(side='left')
-        self.scanned_count_label = tk.Label(row1, text="0", font=value_font, fg=SynthwaveColors.SUCCESS, bg=SynthwaveColors.SECONDARY)
-        self.scanned_count_label.pack(side='left', padx=(10, 20))
-
-        tk.Label(row1, text="Prompts Generated:", font=label_font, fg=SynthwaveColors.TEXT, bg=SynthwaveColors.SECONDARY, width=20, anchor='w').pack(side='left')
-        self.generated_count_label = tk.Label(row1, text="0", font=value_font, fg=SynthwaveColors.SECONDARY_ACCENT, bg=SynthwaveColors.SECONDARY)
-        self.generated_count_label.pack(side='left', padx=(10, 0))
-
-        # Row 2
-        row2 = tk.Frame(stats_frame, bg=SynthwaveColors.SECONDARY)
-        row2.pack(fill='x', pady=2)
-
-        tk.Label(row2, text="Designs Created:", font=label_font, fg=SynthwaveColors.TEXT, bg=SynthwaveColors.SECONDARY, width=20, anchor='w').pack(side='left')
-        self.designs_count_label = tk.Label(row2, text="0", font=value_font, fg=SynthwaveColors.TERTIARY_ACCENT, bg=SynthwaveColors.SECONDARY)
-        self.designs_count_label.pack(side='left', padx=(10, 20))
-
-        tk.Label(row2, text="Session Time:", font=label_font, fg=SynthwaveColors.TEXT, bg=SynthwaveColors.SECONDARY, width=20, anchor='w').pack(side='left')
-        self.session_time_label = tk.Label(row2, text="00:00:00", font=value_font, fg=SynthwaveColors.WARNING, bg=SynthwaveColors.SECONDARY)
-        self.session_time_label.pack(side='left', padx=(10, 0))
-
-        # Row 3
-        row3 = tk.Frame(stats_frame, bg=SynthwaveColors.SECONDARY)
-        row3.pack(fill='x', pady=2)
-
-        tk.Label(row3, text="Current Status:", font=label_font, fg=SynthwaveColors.TEXT, bg=SynthwaveColors.SECONDARY, width=20, anchor='w').pack(side='left')
-        self.session_status_label = tk.Label(row3, text="Ready", font=value_font, fg=SynthwaveColors.SUCCESS, bg=SynthwaveColors.SECONDARY)
-        self.session_status_label.pack(side='left', padx=(10, 0))
-
-    def create_realtime_log(self, parent):
-        """Create real-time log section"""
-        header_font = font.Font(family="Courier New", size=14, weight="bold")
-        section_label = tk.Label(
-            parent,
-            text="┌─ REAL-TIME LOG ─┐",
-            font=header_font,
-            fg=SynthwaveColors.SECONDARY_ACCENT,
-            bg=SynthwaveColors.BACKGROUND
-        )
-        section_label.pack(anchor='w', pady=(0, 10))
-
-        log_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
-        log_container.pack(fill='both', expand=True, pady=(0, 20), padx=10)
-
-        # Log toolbar
-        log_toolbar = tk.Frame(log_container, bg=SynthwaveColors.SECONDARY)
-        log_toolbar.pack(fill='x', padx=10, pady=(10, 0))
-
-        button_font = font.Font(family="Courier New", size=9, weight="bold")
-
-        clear_log_btn = tk.Button(
-            log_toolbar,
-            text="🗑 CLEAR LOG",
-            font=button_font,
-            bg=SynthwaveColors.ERROR,
-            fg=SynthwaveColors.TEXT,
-            relief='flat',
-            padx=10,
-            pady=5,
-            command=self.clear_log
-        )
-        clear_log_btn.pack(side='left')
-
-        auto_scroll_var = tk.BooleanVar(value=True)
-        self.auto_scroll_var = auto_scroll_var
-        auto_scroll_check = tk.Checkbutton(
-            log_toolbar,
-            text="Auto-scroll",
-            variable=auto_scroll_var,
-            font=button_font,
-            fg=SynthwaveColors.TEXT,
-            bg=SynthwaveColors.SECONDARY,
-            selectcolor=SynthwaveColors.PRIMARY_ACCENT
-        )
-        auto_scroll_check.pack(side='right')
-
-        # Log text widget
-        log_frame = tk.Frame(log_container, bg=SynthwaveColors.SECONDARY)
-        log_frame.pack(fill='both', expand=True, padx=10, pady=10)
-
-        self.log_text = tk.Text(
-            log_frame,
-            font=font.Font(family="Courier New", size=9),
-            bg=SynthwaveColors.BACKGROUND,
-            fg=SynthwaveColors.TEXT,
-            insertbackground=SynthwaveColors.PRIMARY_ACCENT,
-            state='disabled',
-            height=15,
-            wrap='word'
-        )
-
-        log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=log_scroll.set)
-
-        self.log_text.pack(side="left", fill="both", expand=True)
-        log_scroll.pack(side="right", fill="y")
-
-    def create_system_status(self, parent):
-        """Create system status section"""
-        header_font = font.Font(family="Courier New", size=14, weight="bold")
-        section_label = tk.Label(
-            parent,
-            text="┌─ SYSTEM STATUS ─┐",
-            font=header_font,
-            fg=SynthwaveColors.TERTIARY_ACCENT,
-            bg=SynthwaveColors.BACKGROUND
-        )
-        section_label.pack(anchor='w', pady=(0, 10))
-
-        status_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
-        status_container.pack(fill='x', padx=10)
-
-        status_frame = tk.Frame(status_container, bg=SynthwaveColors.SECONDARY)
-        status_frame.pack(fill='x', padx=15, pady=15)
-
-        label_font = font.Font(family="Courier New", size=10)
-
-        # System components status
-        components = [
-            ("Reddit API", "reddit_status"),
-            ("LLM Transformer", "llm_status"),
-            ("ComfyUI", "comfyui_status"),
-            ("File System", "filesystem_status")
-        ]
-
-        for i, (name, attr) in enumerate(components):
-            row = tk.Frame(status_frame, bg=SynthwaveColors.SECONDARY)
-            row.pack(fill='x', pady=2)
-
-            tk.Label(
-                row,
-                text=f"{name}:",
-                font=label_font,
-                fg=SynthwaveColors.TEXT,
-                bg=SynthwaveColors.SECONDARY,
-                width=15,
-                anchor='w'
-            ).pack(side='left')
-
-            status_label = tk.Label(
-                row,
-                text="● Online",
-                font=label_font,
-                fg=SynthwaveColors.SUCCESS,
-                bg=SynthwaveColors.SECONDARY
-            )
-            status_label.pack(side='left', padx=(10, 0))
-            setattr(self, attr, status_label)
-
-    def clear_log(self):
-        """Clear the real-time log"""
-        self.log_text.config(state='normal')
-        self.log_text.delete(1.0, tk.END)
-        self.log_text.config(state='disabled')
-
-    def log_message(self, message, level="INFO"):
-        """Add a message to the real-time log"""
-        # Safety check - only log if GUI is initialized
-        if not hasattr(self, 'log_text') or self.log_text is None:
-            print(f"[{level}] {message}")
-            return
-
-        try:
-            import datetime
-            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-
-            color_map = {
-                "INFO": SynthwaveColors.TEXT,
-                "SUCCESS": SynthwaveColors.SUCCESS,
-                "WARNING": SynthwaveColors.WARNING,
-                "ERROR": SynthwaveColors.ERROR
-            }
-
-            color = color_map.get(level, SynthwaveColors.TEXT)
-
-            self.log_text.config(state='normal')
-
-            # Configure tag for color
-            self.log_text.tag_configure(level, foreground=color)
-
-            # Insert message
-            self.log_text.insert(tk.END, f"[{timestamp}] ", "INFO")
-            self.log_text.insert(tk.END, f"{level}: ", level)
-            self.log_text.insert(tk.END, f"{message}\n", "INFO")
-
-            # Auto-scroll if enabled
-            if hasattr(self, 'auto_scroll_var') and self.auto_scroll_var.get():
-                self.log_text.see(tk.END)
-
-            self.log_text.config(state='disabled')
-        except Exception as e:
-            print(f"[{level}] {message} (logging error: {e})")
 
     def process_queue(self):
         """Process messages from background threads"""
@@ -2711,11 +2474,12 @@ class SynthwaveGUI:
         # Update progress bar
         self.scan_progress.config(value=current, maximum=total)
 
-        # Update status
-        self.current_operation_label.config(text=f"Scanning: {post_title[:50]}...")
+        # Update status (with safety check)
+        if hasattr(self, 'current_operation_label'):
+            self.current_operation_label.config(text=f"Scanning: {post_title[:50]}...")
 
-        # Log message
-        self.log_message(f"Scanning post {current}/{total}: {post_title}", "INFO")
+        # Log message to console
+        print(f"[INFO] Scanning post {current}/{total}: {post_title}")
 
     def handle_scan_complete(self, message):
         """Handle scan completion"""
@@ -2736,16 +2500,12 @@ class SynthwaveGUI:
             score = post.get('score', 0)
             self.write_to_scan_results(f"   [{score}] {title}")
 
-        # Update statistics
-        self.scanned_count_label.config(text=str(len(results)))
-        self.session_status_label.config(text="Scan Complete")
-
-        # Log success
-        self.log_message(f"Scan complete: {len(results)} posts from r/{subreddit}", "SUCCESS")
+        # Log success to console
+        print(f"[SUCCESS] Scan complete: {len(results)} posts from r/{subreddit}")
 
         # Auto-transform if enabled
         if self.auto_transform_var.get() and results:
-            self.log_message("Auto-transformation enabled, starting AI processing...", "INFO")
+            print("[INFO] Auto-transformation enabled, starting AI processing...")
             self.start_transform_thread()
 
     def start_transform_thread(self):
@@ -2753,8 +2513,7 @@ class SynthwaveGUI:
         if not self.current_scan_results:
             return
 
-        self.session_status_label.config(text="Transforming...")
-        self.log_message("Starting AI transformation of Reddit posts to design prompts", "INFO")
+        print("[INFO] Starting AI transformation of Reddit posts to design prompts")
 
         self.transform_thread = threading.Thread(
             target=self.run_transform_all,
@@ -2915,11 +2674,12 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         self.scan_progress.config(value=current, maximum=total)
         self.write_to_scan_results(f"🔄 Transforming: {current}/{total} - {post_title[:50]}...")
 
-        # Update status
-        self.current_operation_label.config(text=f"AI Processing: {post_title[:50]}...")
+        # Update status (with safety check)
+        if hasattr(self, 'current_operation_label'):
+            self.current_operation_label.config(text=f"AI Processing: {post_title[:50]}...")
 
-        # Log progress
-        self.log_message(f"Transforming {current}/{total}: {post_title}", "INFO")
+        # Log progress to console
+        print(f"[INFO] Transforming {current}/{total}: {post_title}")
 
     def handle_transform_complete(self, message):
         """Handle transformation completion (Results tab removed - using consolidated interface)"""
@@ -2947,14 +2707,12 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         self.scan_progress.config(value=current, maximum=total)
         self.write_to_scan_results(f"🎨 ComfyUI: {current}/{total} - {prompt_title[:50]}...")
 
-        # Update status
-        self.current_operation_label.config(text=f"Generating: {prompt_title[:50]}...")
+        # Update status (with safety check)
+        if hasattr(self, 'current_operation_label'):
+            self.current_operation_label.config(text=f"Generating: {prompt_title[:50]}...")
 
-        # Update session status
-        self.session_status_label.config(text=f"Generating {current}/{total}")
-
-        # Log progress
-        self.log_message(f"Generating design {current}/{total}: {prompt_title}", "INFO")
+        # Log progress to console
+        print(f"[INFO] Generating design {current}/{total}: {prompt_title}")
 
     def handle_comfyui_complete(self, message):
         """Handle ComfyUI execution completion"""
@@ -2968,15 +2726,14 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         self.scan_progress.config(value=100, maximum=100)
         self.write_to_scan_results(f"🎉 Complete: {total_processed}/{total_processed} operations finished")
 
-        # Update statistics
-        self.designs_count_label.config(text=str(total_processed))
-        self.session_status_label.config(text="Session Complete")
+        # Statistics would be updated in Monitor tab (removed)
 
-        # Update status
-        self.current_operation_label.config(text="Status: All designs generated successfully")
+        # Update status (with safety check)
+        if hasattr(self, 'current_operation_label'):
+            self.current_operation_label.config(text="Status: All designs generated successfully")
 
-        # Log completion
-        self.log_message(f"ComfyUI execution complete: {total_processed} designs generated", "SUCCESS")
+        # Log completion to console
+        print(f"[SUCCESS] ComfyUI execution complete: {total_processed} designs generated")
 
         # Refresh prompts to show updated status
         self.refresh_prompts()
