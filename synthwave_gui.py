@@ -2894,16 +2894,23 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         self.image_canvas.bind('<Button-4>', self.on_mousewheel)
         self.image_canvas.bind('<Button-5>', self.on_mousewheel)
 
-    def refresh_gallery(self):
+    def refresh_gallery(self, preserve_selection=False):
         """Refresh the file list with current images"""
         try:
-            # Clear current list
-            self.file_listbox.delete(0, tk.END)
-            self.gallery_images = []
+            # Store current selection if preserving
+            selected_file_path = None
+            selected_index = None
+            if preserve_selection:
+                selection = self.file_listbox.curselection()
+                if selection and selection[0] < len(self.gallery_images):
+                    selected_index = selection[0]
+                    selected_file_path = self.gallery_images[selected_index]['file_path']
 
             # Scan all output folders for images
             import os
             from pathlib import Path
+
+            new_gallery_images = []
 
             for folder_path in self.output_folders:
                 folder = Path(folder_path)
@@ -2916,8 +2923,7 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
                             folder_name = folder.name
                             display_name = f"[{folder_name}] {image_file.name}"
 
-                            self.file_listbox.insert(tk.END, display_name)
-                            self.gallery_images.append({
+                            new_gallery_images.append({
                                 'display_name': display_name,
                                 'file_path': str(image_file),
                                 'file_name': image_file.name,
@@ -2927,12 +2933,33 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
                             })
 
             # Sort by modification time (newest first)
-            self.gallery_images.sort(key=lambda x: x['modified'], reverse=True)
+            new_gallery_images.sort(key=lambda x: x['modified'], reverse=True)
 
-            # Refresh listbox with sorted items
+            # Check if anything actually changed (avoid unnecessary refresh)
+            if preserve_selection and len(new_gallery_images) == len(self.gallery_images):
+                # Quick check: same number of files with same paths
+                old_paths = [img['file_path'] for img in self.gallery_images]
+                new_paths = [img['file_path'] for img in new_gallery_images]
+                if old_paths == new_paths:
+                    # No changes, skip refresh to avoid disrupting user
+                    return
+
+            # Update gallery_images
+            self.gallery_images = new_gallery_images
+
+            # Refresh listbox with new items
             self.file_listbox.delete(0, tk.END)
             for img_info in self.gallery_images:
                 self.file_listbox.insert(tk.END, img_info['display_name'])
+
+            # Restore selection if preserving
+            if preserve_selection and selected_file_path:
+                # Find the same file in the new list
+                for i, img_info in enumerate(self.gallery_images):
+                    if img_info['file_path'] == selected_file_path:
+                        self.file_listbox.select_set(i)
+                        self.file_listbox.see(i)  # Ensure it's visible
+                        break
 
             # Update header with count
             count = len(self.gallery_images)
@@ -2943,12 +2970,12 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
 
     def schedule_gallery_refresh(self):
         """Schedule automatic gallery refresh"""
-        # Refresh every 3 seconds to catch new generations
-        self.root.after(3000, self.auto_refresh_gallery)
+        # Refresh every 10 seconds to catch new generations (less disruptive)
+        self.root.after(10000, self.auto_refresh_gallery)
 
     def auto_refresh_gallery(self):
         """Auto-refresh gallery and reschedule"""
-        self.refresh_gallery()
+        self.refresh_gallery(preserve_selection=True)
         self.schedule_gallery_refresh()
 
     def on_file_select(self, event):
