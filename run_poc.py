@@ -160,11 +160,20 @@ def run_generation_phase(successful_prompts, text_trends, organizer):
             continue
 
         try:
-            # Import and execute the ComfyUI script as a module
+            # Import and execute the ComfyUI script as a module (ENHANCED APPROACH - SAME AS SYNTHWAVE_GUI)
             import importlib.util
+            import sys
 
-            # Load the module
-            spec = importlib.util.spec_from_file_location("comfyui_script", script_path)
+            # Use unique module name based on script filename to avoid caching issues (SAME AS GUI)
+            module_name = f"comfyui_script_{script_path.stem}"
+
+            # Clear any cached version to force reload (SAME AS GUI)
+            if module_name in sys.modules:
+                del sys.modules[module_name]
+                print(f"🔄 Cleared cached module: {module_name}")
+
+            # Load the module with unique name (SAME AS GUI)
+            spec = importlib.util.spec_from_file_location(module_name, script_path)
             module = importlib.util.module_from_spec(spec)
 
             # Prepare arguments
@@ -180,7 +189,7 @@ def run_generation_phase(successful_prompts, text_trends, organizer):
 
             print(f"   Executing as module with prompt: \"{prompt_result['comfyui_prompt'][:50]}...\"")
 
-            # Execute the script
+            # Execute the script (SAME AS GUI)
             spec.loader.exec_module(module)
             result = module.main(**execution_args)
 
