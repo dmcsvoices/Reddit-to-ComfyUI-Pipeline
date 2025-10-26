@@ -1335,14 +1335,14 @@ class SynthwaveGUI:
     def refresh_prompts(self):
         """Refresh the prompts list from current scan session"""
         try:
-            # Clear current items
-            for item in self.prompts_tree.get_children():
-                self.prompts_tree.delete(item)
-
-            # Use prompts from current scan session only (not from files)
+            # Use prompts from current scan session only (Results tab removed - using text logging)
             self.generated_prompts = self.current_session_prompts.copy()
 
-            for prompt_data in self.current_session_prompts:
+            print(f"📋 Refreshing prompts display: {len(self.generated_prompts)} prompts")
+            self.write_to_scan_results(f"📋 Refreshed prompts: {len(self.generated_prompts)} prompts available")
+
+            # Log each prompt for visibility
+            for i, prompt_data in enumerate(self.current_session_prompts, 1):
                 reddit_id = prompt_data.get('reddit_id', 'unknown')
                 title = prompt_data.get('title', 'Unknown Title')
                 score = prompt_data.get('score', '0')
@@ -1354,25 +1354,27 @@ class SynthwaveGUI:
                 # Update status in the prompt data
                 prompt_data['status'] = status
 
-                # Add to treeview
-                self.prompts_tree.insert('', 'end', values=(
-                    status,
-                    f"r/{reddit_id[:8]}...",
-                    title[:50] + "..." if len(title) > 50 else title,
-                    score,
-                    "Recent"  # Show "Recent" instead of file timestamp
-                ))
+                # Log prompt details to scan results
+                title_preview = title[:40] + "..." if len(title) > 40 else title
+                self.write_to_scan_results(f"   {i}. {status} r/{reddit_id[:8]} [{score}] {title_preview}")
 
-            # Update count
+            # Update count and enable execution if prompts exist
             count = len(self.current_session_prompts)
-            self.prompts_count_label.config(text=f"Prompts: {count}")
 
-            # Enable execution if prompts exist
             if count > 0:
+                # Enable ComfyUI execution button when we have prompts
                 self.start_execution_btn.config(state='normal')
+                self.write_to_scan_results(f"✅ ComfyUI execution enabled: {count} prompts ready")
+                print(f"✅ ComfyUI execution enabled: {count} prompts ready")
+            else:
+                self.start_execution_btn.config(state='disabled')
+                self.write_to_scan_results(f"⏸️ ComfyUI execution disabled: no prompts available")
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to refresh prompts: {str(e)}")
+            error_msg = f"Failed to refresh prompts: {str(e)}"
+            print(f"❌ {error_msg}")
+            self.write_to_scan_results(f"❌ {error_msg}")
+            messagebox.showerror("Error", error_msg)
 
     def check_design_exists(self, reddit_id):
         """Check if a design exists for the given reddit ID"""
@@ -1383,14 +1385,12 @@ class SynthwaveGUI:
         return False
 
     def clear_prompts(self):
-        """Clear all prompts"""
+        """Clear all prompts (Results tab removed - using text logging)"""
         if messagebox.askyesno("Confirm", "Clear all generated prompts? This cannot be undone."):
-            for item in self.prompts_tree.get_children():
-                self.prompts_tree.delete(item)
             self.generated_prompts = []
             self.current_session_prompts = []  # Also clear current session prompts
-            self.prompts_count_label.config(text="Prompts: 0")
             self.start_execution_btn.config(state='disabled')
+            self.write_to_scan_results("🗑️ All prompts cleared")
 
     def start_comfyui_execution(self):
         """Start ComfyUI execution for all prompts"""
@@ -1401,8 +1401,8 @@ class SynthwaveGUI:
         # Update UI state
         self.start_execution_btn.config(state='disabled', text="EXECUTING...")
         self.stop_execution_btn.config(state='normal')
-        self.operation_progress.config(mode='determinate', value=0, maximum=len(self.generated_prompts))
-        self.overall_progress.config(mode='determinate', value=0, maximum=len(self.generated_prompts))
+        # Use scan_progress bar for execution progress (operation_progress removed with Results tab)
+        self.scan_progress.config(mode='determinate', value=0, maximum=len(self.generated_prompts))
 
         # Start execution in background thread
         self.comfyui_thread = threading.Thread(
@@ -2694,6 +2694,13 @@ class SynthwaveGUI:
             self.handle_comfyui_complete(message)
         elif msg_type == 'error':
             self.handle_error(message)
+        elif msg_type == 'log_message':
+            self.handle_log_message(message)
+
+    def handle_log_message(self, message):
+        """Handle log messages by writing them to scan results"""
+        log_text = message.get('message', 'Log message')
+        self.write_to_scan_results(log_text)
 
     def update_scan_progress(self, message):
         """Update scan progress in GUI"""
@@ -2776,9 +2783,21 @@ class SynthwaveGUI:
                 # Transform post to prompt
                 if self.llm_transformer:
                     try:
+                        post_title = post.get('title', 'Unknown')[:40] + "..."
+                        self.queue.put({
+                            'type': 'log_message',
+                            'message': f"🤖 Generating prompt for: {post_title}"
+                        })
+
                         prompt_result = self.llm_transformer.transform_reddit_to_tshirt_prompt(post)
                         if prompt_result.get('success', False):
-                            # Add LLM-generated prompt to current session prompts (for Results display)
+                            prompt_id = prompt_result.get('prompt_id', 'unknown')
+                            self.queue.put({
+                                'type': 'log_message',
+                                'message': f"✅ Generated prompt: {prompt_id}"
+                            })
+
+                            # Add LLM-generated prompt to current session prompts
                             prompt_data = {
                                 'file': Path(prompt_result['prompt_file']),
                                 'reddit_id': post['id'],
@@ -2788,8 +2807,19 @@ class SynthwaveGUI:
                             }
                             self.current_session_prompts.append(prompt_data)
                             successful_transforms += 1
+                        else:
+                            error_msg = prompt_result.get('error', 'Unknown error')
+                            self.queue.put({
+                                'type': 'log_message',
+                                'message': f"❌ Failed to generate prompt: {error_msg}"
+                            })
                     except Exception as e:
-                        print(f"❌ Transform failed for post {post.get('id', 'unknown')}: {e}")
+                        error_msg = f"Transform failed for post {post.get('id', 'unknown')}: {e}"
+                        print(f"❌ {error_msg}")
+                        self.queue.put({
+                            'type': 'log_message',
+                            'message': f"❌ {error_msg}"
+                        })
                 else:
                     # Create mock prompt for demo
                     self.create_mock_prompt(post)
@@ -2881,10 +2911,9 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         total = message.get('total', 1)
         post_title = message.get('post_title', 'Processing...')
 
-        # Update progress
-        self.operation_progress.config(value=current, maximum=total)
-        self.overall_progress.config(value=current, maximum=total)
-        self.overall_progress_label.config(text=f"Transforming: {current}/{total}")
+        # Update progress (using scan_progress since operation_progress removed with Results tab)
+        self.scan_progress.config(value=current, maximum=total)
+        self.write_to_scan_results(f"🔄 Transforming: {current}/{total} - {post_title[:50]}...")
 
         # Update status
         self.current_operation_label.config(text=f"AI Processing: {post_title[:50]}...")
@@ -2893,25 +2922,19 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         self.log_message(f"Transforming {current}/{total}: {post_title}", "INFO")
 
     def handle_transform_complete(self, message):
-        """Handle transformation completion"""
+        """Handle transformation completion (Results tab removed - using consolidated interface)"""
         total_processed = message.get('total_processed', 0)
 
-        # Update statistics
-        self.generated_count_label.config(text=str(total_processed))
-        self.session_status_label.config(text="Prompts Ready")
+        # Log completion to scan results
+        self.write_to_scan_results(f"🎉 AI transformation complete: {total_processed} prompts generated")
 
-        # Log completion
-        self.log_message(f"AI transformation complete: {total_processed} prompts generated", "SUCCESS")
-
-        # Refresh prompts in results tab
+        # Refresh prompts (enables ComfyUI button if prompts exist)
         self.refresh_prompts()
 
         # Auto-execute ComfyUI if enabled
         if self.auto_execute_var.get() and total_processed > 0:
-            self.log_message("Auto-execution enabled, starting ComfyUI processing...", "INFO")
-            # Switch to results tab
-            self.notebook.select(1)  # Results tab
-            # Start ComfyUI execution
+            self.write_to_scan_results("⚡ Auto-execution enabled, starting ComfyUI processing...")
+            # Start ComfyUI execution directly (no tab switching needed)
             self.start_comfyui_execution()
 
     def update_comfyui_progress(self, message):
@@ -2920,10 +2943,9 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         total = message.get('total', 1)
         prompt_title = message.get('prompt_title', 'Processing...')
 
-        # Update progress bars
-        self.operation_progress.config(value=current, maximum=total)
-        self.overall_progress.config(value=current, maximum=total)
-        self.overall_progress_label.config(text=f"ComfyUI: {current}/{total}")
+        # Update progress bars (using scan_progress since operation_progress removed with Results tab)
+        self.scan_progress.config(value=current, maximum=total)
+        self.write_to_scan_results(f"🎨 ComfyUI: {current}/{total} - {prompt_title[:50]}...")
 
         # Update status
         self.current_operation_label.config(text=f"Generating: {prompt_title[:50]}...")
@@ -2942,10 +2964,9 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         self.start_execution_btn.config(state='normal', text="▶ START COMFYUI")
         self.stop_execution_btn.config(state='disabled')
 
-        # Update progress
-        self.operation_progress.config(value=100, maximum=100)
-        self.overall_progress.config(value=100, maximum=100)
-        self.overall_progress_label.config(text=f"Complete: {total_processed}/{total_processed}")
+        # Update progress (using scan_progress since operation_progress removed with Results tab)
+        self.scan_progress.config(value=100, maximum=100)
+        self.write_to_scan_results(f"🎉 Complete: {total_processed}/{total_processed} operations finished")
 
         # Update statistics
         self.designs_count_label.config(text=str(total_processed))
