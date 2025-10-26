@@ -2926,7 +2926,24 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
 
         # Bind events
         self.file_listbox.bind('<<ListboxSelect>>', self.on_file_select)
-        self.file_listbox.bind('<Button-3>', self.show_context_menu)  # Right-click
+
+        # Cross-platform right-click bindings
+        self.file_listbox.bind('<Button-3>', self.show_context_menu)        # Right-click (Linux/Windows)
+        self.file_listbox.bind('<Button-2>', self.show_context_menu)        # Right-click (macOS)
+        self.file_listbox.bind('<Control-Button-1>', self.show_context_menu)  # Ctrl+click (macOS)
+
+        # Debug: Test if event binding works at all
+        def debug_click(event):
+            print(f"[DEBUG] Left click detected at {event.x}, {event.y}")
+        self.file_listbox.bind('<Button-1>', debug_click)
+
+        # Also bind right-click to the entire listbox area (not just items)
+        def debug_right_click(event):
+            print(f"[DEBUG] Right-click area test at {event.x}, {event.y}")
+            self.show_context_menu(event)
+
+        self.file_listbox.bind('<ButtonPress-3>', debug_right_click)        # Alternative right-click binding
+        self.file_listbox.bind('<ButtonPress-2>', debug_right_click)        # Alternative right-click binding for macOS
 
     def create_image_viewer_panel(self, parent):
         """Create the right panel with image viewer"""
@@ -3138,13 +3155,30 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
     def show_context_menu(self, event):
         """Show right-click context menu for file operations"""
         try:
+            print(f"[DEBUG] Right-click detected at {event.x}, {event.y}")
+
+            # Check if we have any images
+            if not hasattr(self, 'gallery_images') or not self.gallery_images:
+                print("[DEBUG] No images in gallery, showing refresh option only")
+                # Show simple context menu to refresh
+                context_menu = tk.Menu(self.root, tearoff=0, bg=SynthwaveColors.SECONDARY, fg=SynthwaveColors.TEXT)
+                context_menu.add_command(
+                    label="🔄 Refresh Gallery",
+                    command=self.refresh_gallery
+                )
+                context_menu.post(event.x_root, event.y_root)
+                return
+
             # Get selected item
             index = self.file_listbox.nearest(event.y)
+            print(f"[DEBUG] Nearest index: {index}, Total images: {len(self.gallery_images)}")
+
             if index >= 0 and index < len(self.gallery_images):
                 self.file_listbox.select_clear(0, tk.END)
                 self.file_listbox.select_set(index)
 
                 img_info = self.gallery_images[index]
+                print(f"[DEBUG] Selected image: {img_info['file_name']}")
 
                 # Create context menu
                 context_menu = tk.Menu(self.root, tearoff=0, bg=SynthwaveColors.SECONDARY, fg=SynthwaveColors.TEXT)
