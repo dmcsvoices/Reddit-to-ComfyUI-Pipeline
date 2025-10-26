@@ -520,11 +520,11 @@ class SynthwaveGUI:
         self.notebook = ttk.Notebook(main_container, style="Synthwave.TNotebook")
         self.notebook.pack(fill='both', expand=True)
 
-        # Create tabs
+        # Create tabs (reordered: Scan, Monitor, Config)
         self.create_scan_setup_tab()
-        self.create_results_tab()
-        self.create_comfyui_config_tab()
         self.create_workflow_monitor_tab()
+        self.create_comfyui_config_tab()
+        # Results tab removed - functionality moved to Scan Setup tab
 
     def create_scan_setup_tab(self):
         """Create the scan setup tab"""
@@ -762,15 +762,21 @@ class SynthwaveGUI:
             radio_btn.pack(side='left', padx=1)
 
     def create_scan_controls(self, parent):
-        """Create scan control buttons"""
+        """Create scan control buttons and ComfyUI execution controls"""
+        # Main controls container
         controls_frame = tk.Frame(parent, bg=SynthwaveColors.BACKGROUND)
         controls_frame.pack(fill='x', pady=10)
 
         button_font = font.Font(family="Courier New", size=12, weight="bold")
+        label_font = font.Font(family="Courier New", size=10)
+
+        # Left section: Buttons
+        buttons_frame = tk.Frame(controls_frame, bg=SynthwaveColors.BACKGROUND)
+        buttons_frame.pack(side='left', fill='y')
 
         # Start scan button
         self.start_scan_btn = tk.Button(
-            controls_frame,
+            buttons_frame,
             text="▶ START SCAN",
             font=button_font,
             bg=SynthwaveColors.SUCCESS,
@@ -781,30 +787,94 @@ class SynthwaveGUI:
             pady=10,
             command=self.start_scan
         )
-        self.start_scan_btn.pack(side='left', padx=(0, 10))
+        self.start_scan_btn.pack(side='left', padx=(0, 15))
+
+        # ComfyUI execution button (next to scan button)
+        self.start_execution_btn = tk.Button(
+            buttons_frame,
+            text="▶ START COMFYUI",
+            font=button_font,
+            bg=SynthwaveColors.SECONDARY_ACCENT,
+            fg=SynthwaveColors.BACKGROUND,
+            activebackground=SynthwaveColors.PRIMARY_ACCENT,
+            relief='flat',
+            padx=20,
+            pady=10,
+            state='disabled',
+            command=self.start_comfyui_execution
+        )
+        self.start_execution_btn.pack(side='left', padx=(0, 10))
+
+        # Stop execution button
+        self.stop_execution_btn = tk.Button(
+            buttons_frame,
+            text="⏹ STOP",
+            font=button_font,
+            bg=SynthwaveColors.ERROR,
+            fg=SynthwaveColors.TEXT,
+            activebackground=SynthwaveColors.TERTIARY_ACCENT,
+            relief='flat',
+            padx=15,
+            pady=10,
+            state='disabled',
+            command=self.stop_comfyui_execution
+        )
+        self.stop_execution_btn.pack(side='left', padx=5)
+
+        # Middle section: Checkboxes (vertical layout)
+        checkboxes_frame = tk.Frame(controls_frame, bg=SynthwaveColors.BACKGROUND)
+        checkboxes_frame.pack(side='left', fill='y', padx=(20, 0))
 
         # Auto-transform checkbox
         self.auto_transform_var = tk.BooleanVar(value=True)
         auto_transform_check = tk.Checkbutton(
-            controls_frame,
+            checkboxes_frame,
             text="Auto-transform to prompts",
             variable=self.auto_transform_var,
-            font=button_font,
+            font=label_font,
             fg=SynthwaveColors.TEXT,
             bg=SynthwaveColors.BACKGROUND,
             activebackground=SynthwaveColors.BACKGROUND,
             selectcolor=SynthwaveColors.PRIMARY_ACCENT
         )
-        auto_transform_check.pack(side='left', padx=10)
+        auto_transform_check.pack(anchor='w')
+
+        # Auto-execute checkbox
+        self.auto_execute_var = tk.BooleanVar(value=False)
+        auto_execute_check = tk.Checkbutton(
+            checkboxes_frame,
+            text="Auto-execute ComfyUI after prompts",
+            variable=self.auto_execute_var,
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.BACKGROUND,
+            activebackground=SynthwaveColors.BACKGROUND,
+            selectcolor=SynthwaveColors.PRIMARY_ACCENT
+        )
+        auto_execute_check.pack(anchor='w')
+
+        # Right section: Progress and script info
+        right_frame = tk.Frame(controls_frame, bg=SynthwaveColors.BACKGROUND)
+        right_frame.pack(side='right', fill='y')
+
+        # Current script label
+        self.current_script_label = tk.Label(
+            right_frame,
+            text=f"Script: {self.selected_comfyui_script}",
+            font=label_font,
+            fg=SynthwaveColors.WARNING,
+            bg=SynthwaveColors.BACKGROUND
+        )
+        self.current_script_label.pack(anchor='e', pady=(0, 5))
 
         # Progress bar
         self.scan_progress = ttk.Progressbar(
-            controls_frame,
+            right_frame,
             style="Synthwave.Horizontal.TProgressbar",
             length=300,
             mode='determinate'
         )
-        self.scan_progress.pack(side='right', padx=10)
+        self.scan_progress.pack(anchor='e')
 
     def create_scan_results_display(self, parent):
         """Create scan results display area"""
@@ -822,25 +892,59 @@ class SynthwaveGUI:
         results_frame = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
         results_frame.pack(fill='both', expand=True, padx=10)
 
-        # Results listbox with scrollbar
-        listbox_frame = tk.Frame(results_frame, bg=SynthwaveColors.SECONDARY)
-        listbox_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        # Results textbox with scrollbar (changed from listbox to handle all output)
+        textbox_frame = tk.Frame(results_frame, bg=SynthwaveColors.SECONDARY)
+        textbox_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
-        self.scan_results_listbox = tk.Listbox(
-            listbox_frame,
+        self.scan_results_textbox = tk.Text(
+            textbox_frame,
             font=font.Font(family="Courier New", size=9),
             bg=SynthwaveColors.BACKGROUND,
             fg=SynthwaveColors.TEXT,
             selectbackground=SynthwaveColors.PRIMARY_ACCENT,
             selectforeground=SynthwaveColors.BACKGROUND,
-            height=8
+            height=12,
+            wrap=tk.WORD,
+            state=tk.DISABLED  # Read-only by default
         )
 
-        scrollbar_results = ttk.Scrollbar(listbox_frame, orient="vertical", command=self.scan_results_listbox.yview)
-        self.scan_results_listbox.configure(yscrollcommand=scrollbar_results.set)
+        scrollbar_results = ttk.Scrollbar(textbox_frame, orient="vertical", command=self.scan_results_textbox.yview)
+        self.scan_results_textbox.configure(yscrollcommand=scrollbar_results.set)
 
-        self.scan_results_listbox.pack(side="left", fill="both", expand=True)
+        self.scan_results_textbox.pack(side="left", fill="both", expand=True)
         scrollbar_results.pack(side="right", fill="y")
+
+    def write_to_scan_results(self, text, color=None):
+        """Helper method to write text to scan results textbox"""
+        try:
+            self.scan_results_textbox.config(state=tk.NORMAL)
+
+            # Add timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            full_text = f"[{timestamp}] {text}\n"
+
+            self.scan_results_textbox.insert(tk.END, full_text)
+
+            # Auto-scroll to bottom
+            self.scan_results_textbox.see(tk.END)
+
+            # Make read-only again
+            self.scan_results_textbox.config(state=tk.DISABLED)
+
+            # Update the display
+            self.scan_results_textbox.update_idletasks()
+        except Exception as e:
+            print(f"Error writing to scan results: {e}")
+
+    def clear_scan_results(self):
+        """Helper method to clear scan results textbox"""
+        try:
+            self.scan_results_textbox.config(state=tk.NORMAL)
+            self.scan_results_textbox.delete(1.0, tk.END)
+            self.scan_results_textbox.config(state=tk.DISABLED)
+        except Exception as e:
+            print(f"Error clearing scan results: {e}")
 
     def on_subreddit_change(self):
         """Handle subreddit selection change"""
@@ -872,8 +976,8 @@ class SynthwaveGUI:
         self.scan_progress.start()
 
         # Clear previous results
-        self.scan_results_listbox.delete(0, tk.END)
-        self.scan_results_listbox.insert(tk.END, f"Scanning r/{subreddit} ({time_filter})...")
+        self.clear_scan_results()
+        self.write_to_scan_results(f"🔍 Starting scan of r/{subreddit} ({time_filter})...")
         self.current_scan_results = []
         self.current_session_prompts = []  # Clear prompts from previous scan
 
@@ -954,7 +1058,11 @@ class SynthwaveGUI:
                 'error': f"Scan failed: {str(e)}"
             })
 
-    def create_results_tab(self):
+    # =========================================================================
+    # RESULTS TAB METHODS - NO LONGER USED (functionality moved to Scan Setup tab)
+    # =========================================================================
+
+    def create_results_tab_DEPRECATED(self):
         """Create the results display tab"""
         results_frame = ttk.Frame(self.notebook, style="Synthwave.TFrame")
         self.notebook.add(results_frame, text="RESULTS")
@@ -1411,8 +1519,8 @@ class SynthwaveGUI:
                     'seed12': random.randint(1, 2**32 - 1)
                 }
 
-            print(f"🎨 Executing ComfyUI script as module: {self.selected_comfyui_script}")
-            print(f"   Arguments: {len(execution_args)} parameters")
+            self.write_to_scan_results(f"🎨 Executing ComfyUI script: {self.selected_comfyui_script}")
+            self.write_to_scan_results(f"   Arguments: {len(execution_args)} parameters")
 
             # Step 4: Enhanced module loading with unique names and reload support
             # Fix: Use unique module name based on script filename to avoid caching issues
@@ -1464,8 +1572,8 @@ class SynthwaveGUI:
                 print(f"🔧 Calling main function with {len(execution_args)} arguments...")
                 result = module.main(**execution_args)
 
-                print(f"✅ ComfyUI script executed successfully")
-                print(f"   Result type: {type(result)}")
+                self.write_to_scan_results(f"✅ ComfyUI script executed successfully")
+                self.write_to_scan_results(f"   Result type: {type(result)}")
 
                 # Step 6: Enhanced result processing and image saving
                 if isinstance(result, dict):
@@ -1477,7 +1585,7 @@ class SynthwaveGUI:
 
                         # Enhanced image count reporting
                         image_count = len(images) if hasattr(images, '__len__') else 1
-                        print(f"💾 Saving {image_count} generated image(s)...")
+                        self.write_to_scan_results(f"💾 Saving {image_count} generated image(s)...")
 
                         # Method 1: Try ComfyUI's native SaveImage
                         try:
@@ -1518,7 +1626,7 @@ class SynthwaveGUI:
                                 # Enhanced saved file reporting
                                 if 'ui' in saved_result and 'images' in saved_result['ui']:
                                     saved_files = saved_result['ui']['images']
-                                    print(f"📁 Images saved successfully via ComfyUI:")
+                                    self.write_to_scan_results(f"📁 Images saved successfully via ComfyUI:")
                                     for i, img_info in enumerate(saved_files, 1):
                                         filename = img_info.get('filename', f'image_{i}')
                                         subfolder = img_info.get('subfolder', '')
@@ -1526,7 +1634,7 @@ class SynthwaveGUI:
                                             filepath = f"{subfolder}/{filename}"
                                         else:
                                             filepath = filename
-                                        print(f"   {i}. {filepath}")
+                                        self.write_to_scan_results(f"   {i}. {filepath}")
                                 else:
                                     print(f"📁 Images saved with result: {saved_result}")
 
@@ -2614,12 +2722,12 @@ class SynthwaveGUI:
 
         # Update scan results display
         self.current_scan_results = results
-        self.scan_results_listbox.delete(0, tk.END)
+        self.write_to_scan_results(f"✅ Scan completed! Found {len(results)} posts:")
 
         for post in results:
             title = post.get('title', 'Unknown Title')[:60]
             score = post.get('score', 0)
-            self.scan_results_listbox.insert(tk.END, f"[{score}] {title}")
+            self.write_to_scan_results(f"   [{score}] {title}")
 
         # Update statistics
         self.scanned_count_label.config(text=str(len(results)))
