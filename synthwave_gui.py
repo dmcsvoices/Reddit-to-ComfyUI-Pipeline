@@ -3249,23 +3249,23 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
                     'gimp'
                 ]
 
-            # Try to find and launch GIMP
+            # Try to find and launch GIMP (non-blocking)
             gimp_found = False
             for gimp_path in gimp_paths:
                 try:
                     if gimp_path == 'gimp':
-                        # Try system PATH
-                        subprocess.run([gimp_path, file_path], check=False)
+                        # Try system PATH - launch in background
+                        subprocess.Popen([gimp_path, file_path])
                         gimp_found = True
                         print(f"[INFO] Launched GIMP from PATH: {file_path}")
                         break
                     elif Path(gimp_path).exists():
-                        # Try specific path
-                        subprocess.run([gimp_path, file_path], check=False)
+                        # Try specific path - launch in background
+                        subprocess.Popen([gimp_path, file_path])
                         gimp_found = True
                         print(f"[INFO] Launched GIMP from {gimp_path}: {file_path}")
                         break
-                except (subprocess.SubprocessError, FileNotFoundError):
+                except (subprocess.SubprocessError, FileNotFoundError, OSError):
                     continue
 
             if not gimp_found:
