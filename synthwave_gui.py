@@ -520,9 +520,10 @@ class SynthwaveGUI:
         self.notebook = ttk.Notebook(main_container, style="Synthwave.TNotebook")
         self.notebook.pack(fill='both', expand=True)
 
-        # Create tabs (reordered: Scan, Config)
+        # Create tabs (reordered: Scan, Config, Gallery)
         self.create_scan_setup_tab()
         self.create_comfyui_config_tab()
+        self.create_gallery_tab()
         # Results tab removed - functionality moved to Scan Setup tab
         # Monitor tab removed - was not providing critical functionality
 
@@ -2741,6 +2742,397 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
     def handle_error(self, message):
         """Handle error messages"""
         messagebox.showerror("Error", message.get('error', 'Unknown error occurred'))
+
+    def create_gallery_tab(self):
+        """Create the Gallery tab with file list and image viewer"""
+        gallery_frame = ttk.Frame(self.notebook, style="Synthwave.TFrame")
+        self.notebook.add(gallery_frame, text="GALLERY")
+
+        # Main container
+        main_container = tk.Frame(gallery_frame, bg=SynthwaveColors.BACKGROUND)
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+
+        # Create paned window for split layout
+        paned_window = tk.PanedWindow(main_container, orient='horizontal', bg=SynthwaveColors.BACKGROUND, sashwidth=5, sashrelief='raised')
+        paned_window.pack(fill='both', expand=True)
+
+        # Left panel - File list
+        self.create_file_list_panel(paned_window)
+
+        # Right panel - Image viewer
+        self.create_image_viewer_panel(paned_window)
+
+        # Set initial pane sizes (30% for file list, 70% for image viewer)
+        self.root.after(100, lambda: paned_window.sash_place(0, 300, 0))
+
+        # Initialize gallery data
+        self.output_folders = [
+            "./output/synthwave_generated",
+            "./poc_output/generated_designs"
+        ]
+        self.current_image_path = None
+        self.gallery_images = []
+
+        # Initial load of files
+        self.refresh_gallery()
+
+        # Set up auto-refresh (check for new files every 2 seconds)
+        self.schedule_gallery_refresh()
+
+    def create_file_list_panel(self, parent):
+        """Create the left panel with file list"""
+        # File list container
+        list_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        parent.add(list_container, minsize=250)
+
+        # Header
+        header_font = font.Font(family="Courier New", size=12, weight="bold")
+        header_label = tk.Label(
+            list_container,
+            text="📁 GENERATED IMAGES",
+            font=header_font,
+            fg=SynthwaveColors.PRIMARY_ACCENT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        header_label.pack(pady=(10, 5))
+
+        # Refresh button
+        button_font = font.Font(family="Courier New", size=9, weight="bold")
+        refresh_btn = tk.Button(
+            list_container,
+            text="🔄 REFRESH",
+            font=button_font,
+            bg=SynthwaveColors.PRIMARY_ACCENT,
+            fg=SynthwaveColors.TEXT,
+            relief='flat',
+            padx=10,
+            pady=3,
+            command=self.refresh_gallery
+        )
+        refresh_btn.pack(pady=(0, 10))
+
+        # File list with scrollbar
+        list_frame = tk.Frame(list_container, bg=SynthwaveColors.SECONDARY)
+        list_frame.pack(fill='both', expand=True, padx=10, pady=(0, 10))
+
+        # Create listbox
+        self.file_listbox = tk.Listbox(
+            list_frame,
+            font=font.Font(family="Courier New", size=9),
+            bg=SynthwaveColors.BACKGROUND,
+            fg=SynthwaveColors.TEXT,
+            selectbackground=SynthwaveColors.PRIMARY_ACCENT,
+            selectforeground=SynthwaveColors.BACKGROUND,
+            relief='flat',
+            bd=0,
+            highlightthickness=0
+        )
+
+        # Scrollbar for listbox
+        scrollbar = tk.Scrollbar(list_frame, orient="vertical", command=self.file_listbox.yview)
+        self.file_listbox.configure(yscrollcommand=scrollbar.set)
+
+        # Pack listbox and scrollbar
+        self.file_listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Bind events
+        self.file_listbox.bind('<<ListboxSelect>>', self.on_file_select)
+        self.file_listbox.bind('<Button-3>', self.show_context_menu)  # Right-click
+
+    def create_image_viewer_panel(self, parent):
+        """Create the right panel with image viewer"""
+        # Image viewer container
+        viewer_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        parent.add(viewer_container, minsize=400)
+
+        # Header
+        header_font = font.Font(family="Courier New", size=12, weight="bold")
+        self.image_header_label = tk.Label(
+            viewer_container,
+            text="🖼️ IMAGE VIEWER",
+            font=header_font,
+            fg=SynthwaveColors.SECONDARY_ACCENT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        self.image_header_label.pack(pady=(10, 5))
+
+        # Image info label
+        info_font = font.Font(family="Courier New", size=9)
+        self.image_info_label = tk.Label(
+            viewer_container,
+            text="Select an image from the list to view",
+            font=info_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        self.image_info_label.pack(pady=(0, 10))
+
+        # Scrollable image canvas
+        canvas_frame = tk.Frame(viewer_container, bg=SynthwaveColors.BACKGROUND)
+        canvas_frame.pack(fill='both', expand=True, padx=10, pady=(0, 10))
+
+        # Create canvas with scrollbars
+        self.image_canvas = tk.Canvas(
+            canvas_frame,
+            bg=SynthwaveColors.BACKGROUND,
+            highlightthickness=0
+        )
+
+        v_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=self.image_canvas.yview)
+        h_scrollbar = tk.Scrollbar(canvas_frame, orient="horizontal", command=self.image_canvas.xview)
+
+        self.image_canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+
+        # Pack canvas and scrollbars
+        self.image_canvas.pack(side="left", fill="both", expand=True)
+        v_scrollbar.pack(side="right", fill="y")
+        h_scrollbar.pack(side="bottom", fill="x")
+
+        # Bind canvas events for zooming/scrolling
+        self.image_canvas.bind('<MouseWheel>', self.on_mousewheel)
+        self.image_canvas.bind('<Button-4>', self.on_mousewheel)
+        self.image_canvas.bind('<Button-5>', self.on_mousewheel)
+
+    def refresh_gallery(self):
+        """Refresh the file list with current images"""
+        try:
+            # Clear current list
+            self.file_listbox.delete(0, tk.END)
+            self.gallery_images = []
+
+            # Scan all output folders for images
+            import os
+            from pathlib import Path
+
+            for folder_path in self.output_folders:
+                folder = Path(folder_path)
+                if folder.exists():
+                    # Find image files
+                    image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'}
+                    for image_file in folder.iterdir():
+                        if image_file.is_file() and image_file.suffix.lower() in image_extensions:
+                            # Add to list with folder prefix for organization
+                            folder_name = folder.name
+                            display_name = f"[{folder_name}] {image_file.name}"
+
+                            self.file_listbox.insert(tk.END, display_name)
+                            self.gallery_images.append({
+                                'display_name': display_name,
+                                'file_path': str(image_file),
+                                'file_name': image_file.name,
+                                'folder': folder_name,
+                                'size': image_file.stat().st_size,
+                                'modified': image_file.stat().st_mtime
+                            })
+
+            # Sort by modification time (newest first)
+            self.gallery_images.sort(key=lambda x: x['modified'], reverse=True)
+
+            # Refresh listbox with sorted items
+            self.file_listbox.delete(0, tk.END)
+            for img_info in self.gallery_images:
+                self.file_listbox.insert(tk.END, img_info['display_name'])
+
+            # Update header with count
+            count = len(self.gallery_images)
+            self.image_header_label.config(text=f"🖼️ IMAGE VIEWER ({count} images)")
+
+        except Exception as e:
+            print(f"[ERROR] Gallery refresh failed: {e}")
+
+    def schedule_gallery_refresh(self):
+        """Schedule automatic gallery refresh"""
+        # Refresh every 3 seconds to catch new generations
+        self.root.after(3000, self.auto_refresh_gallery)
+
+    def auto_refresh_gallery(self):
+        """Auto-refresh gallery and reschedule"""
+        self.refresh_gallery()
+        self.schedule_gallery_refresh()
+
+    def on_file_select(self, event):
+        """Handle file selection from listbox"""
+        try:
+            selection = self.file_listbox.curselection()
+            if selection:
+                index = selection[0]
+                if index < len(self.gallery_images):
+                    img_info = self.gallery_images[index]
+                    self.display_image(img_info)
+        except Exception as e:
+            print(f"[ERROR] File selection failed: {e}")
+
+    def display_image(self, img_info):
+        """Display the selected image in the viewer"""
+        try:
+            from PIL import Image, ImageTk
+            import os
+
+            file_path = img_info['file_path']
+            if not os.path.exists(file_path):
+                self.image_info_label.config(text="❌ Image file not found")
+                return
+
+            # Load and display image
+            pil_image = Image.open(file_path)
+
+            # Calculate display size (max 800x600 while maintaining aspect ratio)
+            max_width, max_height = 800, 600
+            img_width, img_height = pil_image.size
+
+            ratio = min(max_width/img_width, max_height/img_height)
+            if ratio < 1:
+                new_width = int(img_width * ratio)
+                new_height = int(img_height * ratio)
+                display_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            else:
+                display_image = pil_image
+
+            # Convert to PhotoImage
+            self.current_photo = ImageTk.PhotoImage(display_image)
+
+            # Clear canvas and add image
+            self.image_canvas.delete("all")
+            self.image_canvas.create_image(0, 0, anchor="nw", image=self.current_photo)
+
+            # Update canvas scroll region
+            self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all"))
+
+            # Update info label
+            size_mb = img_info['size'] / (1024 * 1024)
+            self.image_info_label.config(
+                text=f"📏 {img_width}x{img_height} | 💾 {size_mb:.1f}MB | 📁 {img_info['folder']}"
+            )
+
+            self.current_image_path = file_path
+
+        except Exception as e:
+            print(f"[ERROR] Image display failed: {e}")
+            self.image_info_label.config(text=f"❌ Failed to load image: {str(e)}")
+
+    def on_mousewheel(self, event):
+        """Handle mouse wheel scrolling on image canvas"""
+        if event.delta:
+            self.image_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif event.num == 4:
+            self.image_canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self.image_canvas.yview_scroll(1, "units")
+
+    def show_context_menu(self, event):
+        """Show right-click context menu for file operations"""
+        try:
+            # Get selected item
+            index = self.file_listbox.nearest(event.y)
+            if index >= 0 and index < len(self.gallery_images):
+                self.file_listbox.select_clear(0, tk.END)
+                self.file_listbox.select_set(index)
+
+                img_info = self.gallery_images[index]
+
+                # Create context menu
+                context_menu = tk.Menu(self.root, tearoff=0, bg=SynthwaveColors.SECONDARY, fg=SynthwaveColors.TEXT)
+
+                context_menu.add_command(
+                    label="🔍 Open With...",
+                    command=lambda: self.open_with_dialog(img_info['file_path'])
+                )
+                context_menu.add_command(
+                    label="📂 Show in Finder/Explorer",
+                    command=lambda: self.show_in_finder(img_info['file_path'])
+                )
+                context_menu.add_separator()
+                context_menu.add_command(
+                    label="📋 Copy Path",
+                    command=lambda: self.copy_to_clipboard(img_info['file_path'])
+                )
+                context_menu.add_command(
+                    label="ℹ️ Properties",
+                    command=lambda: self.show_file_properties(img_info)
+                )
+
+                # Show menu at cursor
+                context_menu.post(event.x_root, event.y_root)
+
+        except Exception as e:
+            print(f"[ERROR] Context menu failed: {e}")
+
+    def open_with_dialog(self, file_path):
+        """Open 'Open With' dialog for the selected file"""
+        try:
+            import subprocess
+            import sys
+            import os
+
+            if sys.platform.startswith('darwin'):  # macOS
+                subprocess.run(['open', '-a', 'Preview', file_path])
+            elif sys.platform.startswith('win'):   # Windows
+                os.startfile(file_path)
+            else:  # Linux
+                subprocess.run(['xdg-open', file_path])
+
+        except Exception as e:
+            print(f"[ERROR] Open with failed: {e}")
+            messagebox.showerror("Error", f"Failed to open file: {str(e)}")
+
+    def show_in_finder(self, file_path):
+        """Show file in Finder/Explorer"""
+        try:
+            import subprocess
+            import sys
+            import os
+
+            if sys.platform.startswith('darwin'):  # macOS
+                subprocess.run(['open', '-R', file_path])
+            elif sys.platform.startswith('win'):   # Windows
+                subprocess.run(['explorer', '/select,', file_path])
+            else:  # Linux
+                subprocess.run(['xdg-open', os.path.dirname(file_path)])
+
+        except Exception as e:
+            print(f"[ERROR] Show in finder failed: {e}")
+
+    def copy_to_clipboard(self, text):
+        """Copy text to clipboard"""
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            print(f"[INFO] Copied to clipboard: {text}")
+        except Exception as e:
+            print(f"[ERROR] Clipboard copy failed: {e}")
+
+    def show_file_properties(self, img_info):
+        """Show file properties dialog"""
+        try:
+            import datetime
+
+            # Format file size
+            size_bytes = img_info['size']
+            if size_bytes < 1024:
+                size_str = f"{size_bytes} B"
+            elif size_bytes < 1024*1024:
+                size_str = f"{size_bytes/1024:.1f} KB"
+            else:
+                size_str = f"{size_bytes/(1024*1024):.1f} MB"
+
+            # Format modification time
+            mod_time = datetime.datetime.fromtimestamp(img_info['modified'])
+            mod_str = mod_time.strftime("%Y-%m-%d %H:%M:%S")
+
+            # Show properties
+            properties = f"""File Properties:
+
+Name: {img_info['file_name']}
+Folder: {img_info['folder']}
+Path: {img_info['file_path']}
+Size: {size_str}
+Modified: {mod_str}"""
+
+            messagebox.showinfo("File Properties", properties)
+
+        except Exception as e:
+            print(f"[ERROR] Properties dialog failed: {e}")
 
 
 def main():
