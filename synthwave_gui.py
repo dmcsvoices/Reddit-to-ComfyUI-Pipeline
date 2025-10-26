@@ -49,20 +49,53 @@ except ImportError as e:
 
 
 class SynthwaveColors:
-    """Synthwave color palette constants"""
-    BACKGROUND = "#0a0a0a"
-    SECONDARY = "#1a0f1a"
-    PRIMARY_ACCENT = "#ff00ff"
-    SECONDARY_ACCENT = "#00ffff"
-    TERTIARY_ACCENT = "#ff0080"
+    """Enhanced Synthwave color palette with glowing effects"""
+    # Deep dark backgrounds for contrast
+    BACKGROUND = "#0d0208"  # Deep dark red-black
+    SECONDARY = "#1a0f1a"   # Dark purple
+    PANEL_BG = "#0f051a"    # Slightly lighter dark purple
+
+    # Vibrant neon accents
+    PRIMARY_ACCENT = "#ff0080"     # Hot pink/magenta
+    SECONDARY_ACCENT = "#00d4ff"   # Electric cyan
+    TERTIARY_ACCENT = "#ff6b35"    # Neon orange
+    QUATERNARY_ACCENT = "#7209b7"  # Deep purple
+
+    # Bright neon colors
+    NEON_PINK = "#ff0080"
+    NEON_CYAN = "#00ffff"
+    NEON_PURPLE = "#b300ff"
+    NEON_ORANGE = "#ff6b35"
+    NEON_GREEN = "#39ff14"
+    NEON_YELLOW = "#ffff00"
+
+    # Text colors
     TEXT = "#ffffff"
-    SUCCESS = "#00ff41"
-    WARNING = "#ffff00"
-    ERROR = "#ff4444"
+    TEXT_BRIGHT = "#ffffff"
+    TEXT_DIM = "#cccccc"
+    TEXT_ACCENT = "#ff0080"
+
+    # Status colors with glow
+    SUCCESS = "#39ff14"     # Bright neon green
+    WARNING = "#ffff00"     # Bright yellow
+    ERROR = "#ff073a"       # Bright red
+
+    # Glow effect colors (lighter versions for borders)
+    GLOW_PINK = "#ff33a1"
+    GLOW_CYAN = "#33ffff"
+    GLOW_PURPLE = "#cc33ff"
+    GLOW_ORANGE = "#ff8533"
+    GLOW_GREEN = "#66ff33"
 
     # Gradient colors for effects
-    GRADIENT_START = "#ff00ff"
-    GRADIENT_END = "#00ffff"
+    GRADIENT_START = "#ff0080"
+    GRADIENT_MID = "#7209b7"
+    GRADIENT_END = "#00d4ff"
+
+    # Border and highlight colors
+    BORDER_BRIGHT = "#ff0080"
+    BORDER_DIM = "#660033"
+    HIGHLIGHT = "#ff33a1"
 
 
 class SplashScreen:
@@ -289,48 +322,93 @@ class SynthwaveGUI:
             traceback.print_exc()
 
     def configure_styles(self):
-        """Configure ttk styles for synthwave theme"""
+        """Configure enhanced synthwave theme with glowing effects"""
         style = ttk.Style()
         style.theme_use('clam')
 
-        # Configure notebook (tabs)
+        # Configure notebook (tabs) with neon glow effect
         style.configure(
             "Synthwave.TNotebook",
             background=SynthwaveColors.BACKGROUND,
-            borderwidth=0
+            borderwidth=2,
+            relief='flat'
         )
         style.configure(
             "Synthwave.TNotebook.Tab",
             background=SynthwaveColors.SECONDARY,
-            foreground=SynthwaveColors.TEXT,
-            padding=[20, 10],
-            font=('Courier New', 10, 'bold')
+            foreground=SynthwaveColors.TEXT_BRIGHT,
+            padding=[25, 12],
+            font=('Courier New', 11, 'bold'),
+            borderwidth=2,
+            relief='raised'
         )
         style.map(
             "Synthwave.TNotebook.Tab",
-            background=[('selected', SynthwaveColors.PRIMARY_ACCENT)],
-            foreground=[('selected', SynthwaveColors.BACKGROUND)]
+            background=[
+                ('selected', SynthwaveColors.PRIMARY_ACCENT),
+                ('active', SynthwaveColors.GLOW_PINK)
+            ],
+            foreground=[
+                ('selected', SynthwaveColors.BACKGROUND),
+                ('active', SynthwaveColors.TEXT_BRIGHT)
+            ],
+            relief=[('selected', 'solid')]
         )
 
-        # Configure frames
+        # Configure frames with subtle borders
         style.configure(
             "Synthwave.TFrame",
             background=SynthwaveColors.BACKGROUND,
-            borderwidth=1,
-            relief='solid'
+            borderwidth=2,
+            relief='flat'
         )
 
-        # Configure buttons
+        # Enhanced button styles with glow simulation
         style.configure(
             "Synthwave.TButton",
             background=SynthwaveColors.PRIMARY_ACCENT,
             foreground=SynthwaveColors.BACKGROUND,
             font=('Courier New', 10, 'bold'),
-            padding=[15, 8]
+            padding=[20, 10],
+            borderwidth=3,
+            relief='raised'
         )
         style.map(
             "Synthwave.TButton",
-            background=[('active', SynthwaveColors.SECONDARY_ACCENT)]
+            background=[
+                ('active', SynthwaveColors.GLOW_PINK),
+                ('pressed', SynthwaveColors.SECONDARY_ACCENT)
+            ],
+            foreground=[
+                ('active', SynthwaveColors.BACKGROUND),
+                ('pressed', SynthwaveColors.BACKGROUND)
+            ],
+            relief=[
+                ('pressed', 'sunken'),
+                ('active', 'solid')
+            ]
+        )
+
+        # Special glow button style for important actions
+        style.configure(
+            "SynthwaveGlow.TButton",
+            background=SynthwaveColors.NEON_CYAN,
+            foreground=SynthwaveColors.BACKGROUND,
+            font=('Courier New', 11, 'bold'),
+            padding=[25, 12],
+            borderwidth=4,
+            relief='raised'
+        )
+        style.map(
+            "SynthwaveGlow.TButton",
+            background=[
+                ('active', SynthwaveColors.GLOW_CYAN),
+                ('pressed', SynthwaveColors.NEON_PURPLE)
+            ],
+            relief=[
+                ('pressed', 'sunken'),
+                ('active', 'solid')
+            ]
         )
 
     def initialize_backend(self):
@@ -571,8 +649,8 @@ class SynthwaveGUI:
         )
         section_label.pack(anchor='w', pady=(0, 10))
 
-        # Subreddit selection frame
-        subreddit_frame = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        # Subreddit selection frame with neon glow border
+        subreddit_frame = tk.Frame(parent, bg=SynthwaveColors.PANEL_BG, relief='solid', bd=3, highlightbackground=SynthwaveColors.NEON_PINK, highlightthickness=2)
         subreddit_frame.pack(fill='both', expand=True, pady=(0, 0))
 
         # Variables for radio buttons
@@ -656,7 +734,7 @@ class SynthwaveGUI:
         )
         section_label.pack(anchor='w', pady=(0, 10))
 
-        params_frame = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        params_frame = tk.Frame(parent, bg=SynthwaveColors.PANEL_BG, relief='solid', bd=3, highlightbackground=SynthwaveColors.NEON_CYAN, highlightthickness=2)
         params_frame.pack(fill='both', expand=True, pady=(0, 0))
 
         content_frame = tk.Frame(params_frame, bg=SynthwaveColors.SECONDARY)
@@ -775,32 +853,38 @@ class SynthwaveGUI:
         buttons_frame = tk.Frame(controls_frame, bg=SynthwaveColors.BACKGROUND)
         buttons_frame.pack(side='left', fill='y')
 
-        # Start scan button
+        # Start scan button with glow effect
         self.start_scan_btn = tk.Button(
             buttons_frame,
             text="▶ START SCAN",
             font=button_font,
             bg=SynthwaveColors.SUCCESS,
             fg=SynthwaveColors.BACKGROUND,
-            activebackground=SynthwaveColors.PRIMARY_ACCENT,
-            relief='flat',
-            padx=20,
-            pady=10,
+            activebackground=SynthwaveColors.GLOW_GREEN,
+            relief='raised',
+            bd=4,
+            padx=25,
+            pady=12,
+            highlightbackground=SynthwaveColors.NEON_GREEN,
+            highlightthickness=2,
             command=self.start_scan
         )
         self.start_scan_btn.pack(side='left', padx=(0, 15))
 
-        # ComfyUI execution button (next to scan button)
+        # ComfyUI execution button with cyan glow
         self.start_execution_btn = tk.Button(
             buttons_frame,
             text="▶ START COMFYUI",
             font=button_font,
             bg=SynthwaveColors.SECONDARY_ACCENT,
             fg=SynthwaveColors.BACKGROUND,
-            activebackground=SynthwaveColors.PRIMARY_ACCENT,
-            relief='flat',
-            padx=20,
-            pady=10,
+            activebackground=SynthwaveColors.GLOW_CYAN,
+            relief='raised',
+            bd=4,
+            padx=25,
+            pady=12,
+            highlightbackground=SynthwaveColors.NEON_CYAN,
+            highlightthickness=2,
             state='disabled',
             command=self.start_comfyui_execution
         )
@@ -890,7 +974,7 @@ class SynthwaveGUI:
         section_label.pack(anchor='w', pady=(20, 10))
 
         # Results frame
-        results_frame = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        results_frame = tk.Frame(parent, bg=SynthwaveColors.PANEL_BG, relief='solid', bd=3, highlightbackground=SynthwaveColors.NEON_ORANGE, highlightthickness=2)
         results_frame.pack(fill='both', expand=True, padx=10)
 
         # Results textbox with scrollbar (changed from listbox to handle all output)
@@ -2782,7 +2866,7 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
     def create_file_list_panel(self, parent):
         """Create the left panel with file list"""
         # File list container
-        list_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        list_container = tk.Frame(parent, bg=SynthwaveColors.PANEL_BG, relief='solid', bd=4, highlightbackground=SynthwaveColors.NEON_PURPLE, highlightthickness=3)
         parent.add(list_container, minsize=250)
 
         # Header
@@ -2796,17 +2880,21 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         )
         header_label.pack(pady=(10, 5))
 
-        # Refresh button
+        # Refresh button with glow effect
         button_font = font.Font(family="Courier New", size=9, weight="bold")
         refresh_btn = tk.Button(
             list_container,
             text="🔄 REFRESH",
             font=button_font,
             bg=SynthwaveColors.PRIMARY_ACCENT,
-            fg=SynthwaveColors.TEXT,
-            relief='flat',
-            padx=10,
-            pady=3,
+            fg=SynthwaveColors.BACKGROUND,
+            activebackground=SynthwaveColors.GLOW_PINK,
+            relief='raised',
+            bd=3,
+            padx=15,
+            pady=6,
+            highlightbackground=SynthwaveColors.NEON_PINK,
+            highlightthickness=1,
             command=self.refresh_gallery
         )
         refresh_btn.pack(pady=(0, 10))
@@ -2843,7 +2931,7 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
     def create_image_viewer_panel(self, parent):
         """Create the right panel with image viewer"""
         # Image viewer container
-        viewer_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
+        viewer_container = tk.Frame(parent, bg=SynthwaveColors.PANEL_BG, relief='solid', bd=4, highlightbackground=SynthwaveColors.NEON_CYAN, highlightthickness=3)
         parent.add(viewer_container, minsize=400)
 
         # Header
