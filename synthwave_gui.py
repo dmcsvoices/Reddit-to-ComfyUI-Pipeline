@@ -3154,6 +3154,11 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
                     command=lambda: self.open_with_dialog(img_info['file_path'])
                 )
                 context_menu.add_command(
+                    label="🎨 Open with GIMP",
+                    command=lambda: self.open_with_gimp(img_info['file_path'])
+                )
+                context_menu.add_separator()
+                context_menu.add_command(
                     label="📂 Show in Finder/Explorer",
                     command=lambda: self.show_in_finder(img_info['file_path'])
                 )
@@ -3190,6 +3195,82 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         except Exception as e:
             print(f"[ERROR] Open with failed: {e}")
             messagebox.showerror("Error", f"Failed to open file: {str(e)}")
+
+    def open_with_gimp(self, file_path):
+        """Launch GIMP with the selected image file"""
+        try:
+            import subprocess
+            import sys
+            import os
+            from pathlib import Path
+
+            # Common GIMP executable names and paths by platform
+            gimp_paths = []
+
+            if sys.platform.startswith('darwin'):  # macOS
+                gimp_paths = [
+                    '/Volumes/Tikbalang2TB/Apps2/GIMP.app/Contents/MacOS/GIMP',
+                    '/Volumes/Tikbalang2TB/Apps2/GIMP-2.10.app/Contents/MacOS/GIMP',
+                    '/Applications/GIMP.app/Contents/MacOS/GIMP',
+                    '/Applications/GIMP-2.10.app/Contents/MacOS/GIMP',
+                    '/usr/local/bin/gimp',
+                    'gimp'
+                ]
+            elif sys.platform.startswith('win'):   # Windows
+                gimp_paths = [
+                    'C:\\Program Files\\GIMP 2\\bin\\gimp-2.10.exe',
+                    'C:\\Program Files (x86)\\GIMP 2\\bin\\gimp-2.10.exe',
+                    'C:\\Program Files\\GIMP\\bin\\gimp.exe',
+                    'C:\\Program Files (x86)\\GIMP\\bin\\gimp.exe',
+                    'gimp'
+                ]
+            else:  # Linux
+                gimp_paths = [
+                    '/usr/bin/gimp',
+                    '/usr/local/bin/gimp',
+                    '/snap/bin/gimp',
+                    '/usr/bin/gimp-2.10',
+                    'gimp'
+                ]
+
+            # Try to find and launch GIMP
+            gimp_found = False
+            for gimp_path in gimp_paths:
+                try:
+                    if gimp_path == 'gimp':
+                        # Try system PATH
+                        subprocess.run([gimp_path, file_path], check=False)
+                        gimp_found = True
+                        print(f"[INFO] Launched GIMP from PATH: {file_path}")
+                        break
+                    elif Path(gimp_path).exists():
+                        # Try specific path
+                        subprocess.run([gimp_path, file_path], check=False)
+                        gimp_found = True
+                        print(f"[INFO] Launched GIMP from {gimp_path}: {file_path}")
+                        break
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    continue
+
+            if not gimp_found:
+                # If GIMP not found, show helpful error message
+                error_msg = f"""GIMP not found on your system.
+
+Please install GIMP from: https://www.gimp.org/downloads/
+
+Common installation locations:
+• macOS: /Applications/GIMP.app
+• Windows: C:\\Program Files\\GIMP 2\\
+• Linux: /usr/bin/gimp
+
+Or ensure GIMP is in your system PATH."""
+
+                messagebox.showwarning("GIMP Not Found", error_msg)
+                print(f"[WARNING] GIMP not found. Checked paths: {gimp_paths}")
+
+        except Exception as e:
+            print(f"[ERROR] GIMP launch failed: {e}")
+            messagebox.showerror("Error", f"Failed to launch GIMP: {str(e)}")
 
     def show_in_finder(self, file_path):
         """Show file in Finder/Explorer"""
