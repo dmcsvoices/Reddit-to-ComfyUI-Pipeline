@@ -35,14 +35,20 @@ The application features a stunning synthwave-themed GUI with three main tabs fo
 ### 🔍 **SCAN SETUP Tab**
 *Your mission control for the entire pipeline*
 
+![SCAN SETUP Tab](Screenshot%202025-10-27%20at%207.52.25%20AM.png)
+
 - **Reddit Configuration**: Select target subreddits and configure scanning parameters
 - **LLM Integration**: Set up LMStudio connection and prompt transformation settings
 - **Auto-Execution**: Enable automatic ComfyUI processing after content collection
 - **Real-time Progress**: Live progress bars and detailed operation logs
 - **Session Management**: Start, stop, and monitor complete pipeline runs
 
+*The SCAN SETUP tab provides intuitive controls for subreddit selection, trend filtering, and real-time monitoring of the entire pipeline process.*
+
 ### ⚙️ **COMFYUI CONFIG Tab**
 *Advanced workflow configuration and script management*
+
+![COMFYUI CONFIG Tab](Screenshot%202025-10-27%20at%207.52.52%20AM.png)
 
 - **Script Analysis**: Automatic detection and parsing of ComfyUI workflow scripts
 - **Parameter Mapping**: Visual configuration of script inputs and prompt variables
@@ -50,14 +56,20 @@ The application features a stunning synthwave-themed GUI with three main tabs fo
 - **Template Management**: Save and load different ComfyUI workflow configurations
 - **Debug Tools**: Advanced troubleshooting and script testing capabilities
 
+*The COMFYUI CONFIG tab features side-by-side script and model selection panels, allowing for easy workflow management and LLM model switching.*
+
 ### 🖼️ **GALLERY Tab**
 *Visual management of your generated designs*
+
+![GALLERY Tab](Screenshot%202025-10-27%20at%207.53.24%20AM.png)
 
 - **File Browser**: Navigate and organize all generated outputs and source images
 - **Image Viewer**: High-quality preview of generated t-shirt designs
 - **Metadata Display**: View detailed information about each design's creation process
 - **Export Tools**: Easy access to files for printing or further editing
 - **GIMP Integration**: Direct launch of designs in GIMP for advanced editing
+
+*The GALLERY tab displays generated designs with a comprehensive file browser and high-quality image viewer, showing here a generated t-shirt design from Reddit content.*
 
 > **✨ Visual Design**: The interface features vibrant neon colors, glowing borders, and smooth animations that create an immersive synthwave experience while maintaining professional functionality.
 

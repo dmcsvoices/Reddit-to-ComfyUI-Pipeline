@@ -1860,8 +1860,15 @@ class SynthwaveGUI:
         main_container = tk.Frame(config_frame, bg=SynthwaveColors.BACKGROUND)
         main_container.pack(fill='both', expand=True, padx=20, pady=20)
 
-        # Script Selection Section
-        self.create_script_selection_section(main_container)
+        # Top row: Script Selection and Model Selection (side by side)
+        top_row_frame = tk.Frame(main_container, bg=SynthwaveColors.BACKGROUND)
+        top_row_frame.pack(fill='x', pady=(0, 20))
+
+        # Script Selection Section (left half)
+        self.create_script_selection_section(top_row_frame)
+
+        # Model Selection Section (right half)
+        self.create_model_selection_section(top_row_frame)
 
         # Script Import Section
         self.create_script_import_section(main_container)
@@ -1873,19 +1880,23 @@ class SynthwaveGUI:
         self.create_script_preview_section(main_container)
 
     def create_script_selection_section(self, parent):
-        """Create ComfyUI script selection section"""
+        """Create ComfyUI script selection section (left half)"""
+        # Left half container
+        left_container = tk.Frame(parent, bg=SynthwaveColors.BACKGROUND)
+        left_container.pack(side='left', fill='both', expand=True, padx=(0, 10))
+
         header_font = font.Font(family="Courier New", size=14, weight="bold")
         section_label = tk.Label(
-            parent,
-            text="┌─ COMFYUI SCRIPT SELECTION ─┐",
+            left_container,
+            text="┌─ SCRIPT SELECTION ─┐",
             font=header_font,
             fg=SynthwaveColors.PRIMARY_ACCENT,
             bg=SynthwaveColors.BACKGROUND
         )
         section_label.pack(anchor='w', pady=(0, 10))
 
-        selection_container = tk.Frame(parent, bg=SynthwaveColors.SECONDARY, relief='ridge', bd=2)
-        selection_container.pack(fill='x', pady=(0, 20), padx=10)
+        selection_container = tk.Frame(left_container, bg=SynthwaveColors.PANEL_BG, relief='solid', bd=3, highlightbackground=SynthwaveColors.NEON_PINK, highlightthickness=2)
+        selection_container.pack(fill='both', expand=True)
 
         selection_frame = tk.Frame(selection_container, bg=SynthwaveColors.SECONDARY)
         selection_frame.pack(fill='x', padx=15, pady=15)
@@ -1962,6 +1973,128 @@ class SynthwaveGUI:
             command=self.select_script
         )
         select_btn.pack(side='left')
+
+    def create_model_selection_section(self, parent):
+        """Create LMStudio model selection section (right half)"""
+        # Right half container
+        right_container = tk.Frame(parent, bg=SynthwaveColors.BACKGROUND)
+        right_container.pack(side='right', fill='both', expand=True, padx=(10, 0))
+
+        header_font = font.Font(family="Courier New", size=14, weight="bold")
+        section_label = tk.Label(
+            right_container,
+            text="┌─ MODEL SELECTION ─┐",
+            font=header_font,
+            fg=SynthwaveColors.SECONDARY_ACCENT,
+            bg=SynthwaveColors.BACKGROUND
+        )
+        section_label.pack(anchor='w', pady=(0, 10))
+
+        model_container = tk.Frame(right_container, bg=SynthwaveColors.PANEL_BG, relief='solid', bd=3, highlightbackground=SynthwaveColors.NEON_CYAN, highlightthickness=2)
+        model_container.pack(fill='both', expand=True)
+
+        model_frame = tk.Frame(model_container, bg=SynthwaveColors.SECONDARY)
+        model_frame.pack(fill='x', padx=15, pady=15)
+
+        label_font = font.Font(family="Courier New", size=10)
+        button_font = font.Font(family="Courier New", size=10, weight="bold")
+
+        # Current model display
+        current_model_frame = tk.Frame(model_frame, bg=SynthwaveColors.SECONDARY)
+        current_model_frame.pack(fill='x', pady=(0, 15))
+
+        tk.Label(
+            current_model_frame,
+            text="Current Model:",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        ).pack(side='left')
+
+        # Initialize current model variable with fallback
+        self.current_model_var = tk.StringVar(value="qwen/qwen3-vl-30b@4bit")  # Default fallback
+
+        self.current_model_display = tk.Label(
+            current_model_frame,
+            textvariable=self.current_model_var,
+            font=font.Font(family="Courier New", size=10, weight="bold"),
+            fg=SynthwaveColors.WARNING,
+            bg=SynthwaveColors.SECONDARY
+        )
+        self.current_model_display.pack(side='left', padx=(10, 0))
+
+        # Available models dropdown
+        models_label = tk.Label(
+            model_frame,
+            text="Available Models:",
+            font=label_font,
+            fg=SynthwaveColors.TEXT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        models_label.pack(anchor='w', pady=(0, 5))
+
+        # Model selection frame
+        select_model_frame = tk.Frame(model_frame, bg=SynthwaveColors.SECONDARY)
+        select_model_frame.pack(fill='x', pady=(0, 15))
+
+        # Initialize available models variable
+        self.available_models_var = tk.StringVar()
+        self.available_models = []
+
+        # Model dropdown (Combobox)
+        self.model_combobox = ttk.Combobox(
+            select_model_frame,
+            textvariable=self.available_models_var,
+            font=label_font,
+            state='readonly',
+            width=35
+        )
+        self.model_combobox.pack(side='left', padx=(0, 10))
+
+        # Load Model button
+        load_model_btn = tk.Button(
+            select_model_frame,
+            text="Load Model",
+            font=button_font,
+            bg=SynthwaveColors.PRIMARY_ACCENT,
+            fg=SynthwaveColors.BACKGROUND,
+            activebackground=SynthwaveColors.NEON_CYAN,
+            activeforeground=SynthwaveColors.BACKGROUND,
+            relief='flat',
+            padx=15,
+            pady=6,
+            command=self.load_selected_model
+        )
+        load_model_btn.pack(side='left', padx=(0, 10))
+
+        # Refresh Models button
+        refresh_models_btn = tk.Button(
+            select_model_frame,
+            text="Refresh",
+            font=button_font,
+            bg=SynthwaveColors.TERTIARY_ACCENT,
+            fg=SynthwaveColors.BACKGROUND,
+            activebackground=SynthwaveColors.NEON_PINK,
+            activeforeground=SynthwaveColors.BACKGROUND,
+            relief='flat',
+            padx=15,
+            pady=6,
+            command=self.refresh_available_models
+        )
+        refresh_models_btn.pack(side='left')
+
+        # Status display
+        self.model_status_label = tk.Label(
+            model_frame,
+            text="Status: Ready to load models",
+            font=font.Font(family="Courier New", size=9),
+            fg=SynthwaveColors.SECONDARY_ACCENT,
+            bg=SynthwaveColors.SECONDARY
+        )
+        self.model_status_label.pack(anchor='w', pady=(5, 0))
+
+        # Initialize models on creation
+        self.refresh_available_models()
 
     def create_script_import_section(self, parent):
         """Create script import section"""
@@ -2964,11 +3097,13 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         canvas_frame = tk.Frame(viewer_container, bg=SynthwaveColors.BACKGROUND)
         canvas_frame.pack(fill='both', expand=True, padx=10, pady=(0, 10))
 
-        # Create canvas with scrollbars
+        # Create canvas with scrollbars and explicit size
         self.image_canvas = tk.Canvas(
             canvas_frame,
             bg=SynthwaveColors.BACKGROUND,
-            highlightthickness=0
+            highlightthickness=0,
+            width=800,
+            height=600
         )
 
         v_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=self.image_canvas.yview)
@@ -3038,6 +3173,7 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
 
             # Update gallery_images
             self.gallery_images = new_gallery_images
+            print(f"[DEBUG] Gallery refresh found {len(self.gallery_images)} images")
 
             # Refresh listbox with new items
             self.file_listbox.delete(0, tk.END)
@@ -3074,13 +3210,25 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
         """Handle file selection from listbox"""
         try:
             selection = self.file_listbox.curselection()
+            print(f"[DEBUG] File selection event triggered, selection: {selection}")
+
             if selection:
                 index = selection[0]
+                print(f"[DEBUG] Selected index: {index}, total images: {len(self.gallery_images)}")
+
                 if index < len(self.gallery_images):
                     img_info = self.gallery_images[index]
+                    print(f"[DEBUG] Attempting to display: {img_info['display_name']}")
                     self.display_image(img_info)
+                else:
+                    print(f"[WARNING] Index {index} out of range for {len(self.gallery_images)} images")
+            else:
+                print(f"[DEBUG] No file selected")
+
         except Exception as e:
             print(f"[ERROR] File selection failed: {e}")
+            import traceback
+            traceback.print_exc()
 
     def display_image(self, img_info):
         """Display the selected image in the viewer"""
@@ -3089,46 +3237,78 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
             import os
 
             file_path = img_info['file_path']
+            print(f"[DEBUG] Attempting to display image: {file_path}")
+
             if not os.path.exists(file_path):
-                self.image_info_label.config(text="❌ Image file not found")
+                error_msg = f"❌ Image file not found: {file_path}"
+                print(f"[ERROR] {error_msg}")
+                self.image_info_label.config(text=error_msg)
                 return
 
             # Load and display image
             pil_image = Image.open(file_path)
+            original_width, original_height = pil_image.size
+            print(f"[DEBUG] Original image size: {original_width}x{original_height}")
 
-            # Calculate display size (max 800x600 while maintaining aspect ratio)
-            max_width, max_height = 800, 600
-            img_width, img_height = pil_image.size
+            # Calculate display size (max 750x550 to fit in 800x600 canvas with padding)
+            max_width, max_height = 750, 550
 
-            ratio = min(max_width/img_width, max_height/img_height)
+            ratio = min(max_width/original_width, max_height/original_height)
             if ratio < 1:
-                new_width = int(img_width * ratio)
-                new_height = int(img_height * ratio)
+                new_width = int(original_width * ratio)
+                new_height = int(original_height * ratio)
                 display_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                print(f"[DEBUG] Resized image to: {new_width}x{new_height}")
             else:
                 display_image = pil_image
+                new_width, new_height = original_width, original_height
+                print(f"[DEBUG] Using original size: {new_width}x{new_height}")
 
-            # Convert to PhotoImage
+            # Convert to PhotoImage and maintain reference
             self.current_photo = ImageTk.PhotoImage(display_image)
+            print(f"[DEBUG] PhotoImage created successfully")
 
-            # Clear canvas and add image
+            # Clear canvas
             self.image_canvas.delete("all")
-            self.image_canvas.create_image(0, 0, anchor="nw", image=self.current_photo)
 
-            # Update canvas scroll region
-            self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all"))
+            # Center the image in the canvas
+            canvas_width = self.image_canvas.winfo_width()
+            canvas_height = self.image_canvas.winfo_height()
+
+            # If canvas hasn't been drawn yet, use the configured size
+            if canvas_width <= 1:
+                canvas_width = 800
+            if canvas_height <= 1:
+                canvas_height = 600
+
+            x_center = canvas_width // 2
+            y_center = canvas_height // 2
+
+            # Place image at center
+            self.image_canvas.create_image(x_center, y_center, anchor="center", image=self.current_photo)
+            print(f"[DEBUG] Image placed at canvas center: ({x_center}, {y_center})")
+
+            # Update canvas scroll region to accommodate the image
+            bbox = self.image_canvas.bbox("all")
+            if bbox:
+                self.image_canvas.configure(scrollregion=bbox)
+                print(f"[DEBUG] Canvas scroll region set to: {bbox}")
 
             # Update info label
             size_mb = img_info['size'] / (1024 * 1024)
-            self.image_info_label.config(
-                text=f"📏 {img_width}x{img_height} | 💾 {size_mb:.1f}MB | 📁 {img_info['folder']}"
-            )
+            info_text = f"📏 {original_width}x{original_height} | 💾 {size_mb:.1f}MB | 📁 {img_info['folder']}"
+            self.image_info_label.config(text=info_text)
+            print(f"[DEBUG] Info updated: {info_text}")
 
             self.current_image_path = file_path
+            print(f"[SUCCESS] Image displayed successfully: {os.path.basename(file_path)}")
 
         except Exception as e:
+            error_msg = f"❌ Failed to load image: {str(e)}"
             print(f"[ERROR] Image display failed: {e}")
-            self.image_info_label.config(text=f"❌ Failed to load image: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.image_info_label.config(text=error_msg)
 
     def on_mousewheel(self, event):
         """Handle mouse wheel scrolling on image canvas"""
@@ -3345,6 +3525,123 @@ Modified: {mod_str}"""
 
         except Exception as e:
             print(f"[ERROR] Properties dialog failed: {e}")
+
+    def refresh_available_models(self):
+        """Refresh the list of available models from LMStudio API"""
+        try:
+            self.model_status_label.config(text="Status: Loading models...", fg=SynthwaveColors.WARNING)
+            self.root.update_idletasks()
+
+            # Import lmstudio to get available models
+            import lmstudio as lms
+
+            # Get list of downloaded models
+            downloaded_models = lms.list_downloaded_models()
+
+            if downloaded_models:
+                # Extract model keys/names
+                model_names = []
+                for model in downloaded_models:
+                    # Handle different possible formats from the API
+                    if isinstance(model, dict):
+                        model_key = model.get('key', model.get('name', str(model)))
+                    else:
+                        model_key = str(model)
+                    model_names.append(model_key)
+
+                # Update available models
+                self.available_models = model_names
+                self.model_combobox['values'] = self.available_models
+
+                # Set current selection to fallback model if it exists in the list
+                fallback_model = self.current_model_var.get()
+                if fallback_model in self.available_models:
+                    self.model_combobox.set(fallback_model)
+                elif self.available_models:
+                    # If fallback not available, use first available model
+                    self.model_combobox.set(self.available_models[0])
+
+                self.model_status_label.config(
+                    text=f"Status: Found {len(self.available_models)} available models",
+                    fg=SynthwaveColors.SUCCESS
+                )
+                print(f"[INFO] Loaded {len(self.available_models)} available models")
+
+            else:
+                self.available_models = []
+                self.model_combobox['values'] = []
+                self.model_status_label.config(
+                    text="Status: No models found in LMStudio",
+                    fg=SynthwaveColors.ERROR
+                )
+                print("[WARNING] No models found in LMStudio")
+
+        except ImportError:
+            self.model_status_label.config(
+                text="Status: LMStudio not available (lmstudio package not found)",
+                fg=SynthwaveColors.ERROR
+            )
+            print("[ERROR] lmstudio package not found. Please install: pip install lmstudio")
+
+        except Exception as e:
+            self.model_status_label.config(
+                text=f"Status: Error loading models - {str(e)}",
+                fg=SynthwaveColors.ERROR
+            )
+            print(f"[ERROR] Failed to refresh models: {e}")
+
+    def load_selected_model(self):
+        """Load the selected model in LMStudio"""
+        try:
+            selected_model = self.model_combobox.get()
+            if not selected_model:
+                self.model_status_label.config(
+                    text="Status: No model selected",
+                    fg=SynthwaveColors.WARNING
+                )
+                return
+
+            self.model_status_label.config(
+                text=f"Status: Loading {selected_model}...",
+                fg=SynthwaveColors.WARNING
+            )
+            self.root.update_idletasks()
+
+            # Import lmstudio to load the model
+            import lmstudio as lms
+
+            # Load the new model instance
+            print(f"[INFO] Loading model: {selected_model}")
+            model_instance = lms.llm(selected_model)
+
+            # Update the current model display
+            self.current_model_var.set(selected_model)
+
+            # Update status
+            self.model_status_label.config(
+                text=f"Status: Successfully loaded {selected_model}",
+                fg=SynthwaveColors.SUCCESS
+            )
+
+            print(f"[SUCCESS] Model loaded: {selected_model}")
+
+            # TODO: Update the transformer instance to use the new model
+            # This would require refactoring the TShirtPromptTransformer to accept model instance
+            # For now, the model will be loaded for future use
+
+        except ImportError:
+            self.model_status_label.config(
+                text="Status: LMStudio not available",
+                fg=SynthwaveColors.ERROR
+            )
+            print("[ERROR] lmstudio package not found")
+
+        except Exception as e:
+            self.model_status_label.config(
+                text=f"Status: Failed to load {selected_model} - {str(e)}",
+                fg=SynthwaveColors.ERROR
+            )
+            print(f"[ERROR] Failed to load model {selected_model}: {e}")
 
 
 def main():
