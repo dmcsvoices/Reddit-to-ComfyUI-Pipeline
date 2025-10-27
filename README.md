@@ -1,19 +1,21 @@
 # 🚀 Reddit-to-ComfyUI Pipeline
 
-**Automated T-Shirt Design Generation from Trending Reddit Content**
+**Synthwave-Themed GUI for Automated T-Shirt Design Generation**
 
-Transform viral Reddit trends into print-ready t-shirt designs using AI-powered automation! This pipeline monitors Reddit for trending content, processes it through Vision-Language Models, and generates commercial-quality designs using ComfyUI workflows.
+Transform viral Reddit trends into print-ready t-shirt designs using our sleek tkinter-based GUI application! This intuitive interface provides a complete workflow for monitoring Reddit content, processing it through Vision-Language Models, and generating commercial-quality designs using ComfyUI workflows.
 
 ![Pipeline Demo](https://img.shields.io/badge/Status-Production%20Ready-brightgreen) ![Python](https://img.shields.io/badge/Python-3.8+-blue) ![ComfyUI](https://img.shields.io/badge/ComfyUI-Compatible-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## ✨ Features
 
+🖥️ **Synthwave GUI**: Intuitive tkinter-based interface with neon aesthetics and tabbed workflow management
 🎯 **Trend Monitoring**: Automatically scrapes trending content from Reddit subreddits
 🖼️ **Multimodal AI**: Processes both text and images using Vision-Language Models
 🎨 **Design Generation**: Creates 768x1024 print-ready designs via ComfyUI
 📁 **Smart Organization**: Automatically organizes outputs with metadata tracking
 🔄 **Flexible Execution**: Multiple deployment options for different environments
 ⚡ **Batch Processing**: Handle multiple trends in a single workflow
+🎬 **Real-time Progress**: Live monitoring and progress tracking for all operations
 
 ## 🎬 How It Works
 
@@ -25,6 +27,39 @@ Transform viral Reddit trends into print-ready t-shirt designs using AI-powered 
 2. **AI Transformation**: Uses LMStudio's local LLM to convert trends into design prompts
 3. **Visual Generation**: Executes ComfyUI workflows to create t-shirt graphics
 4. **Quality Control**: Organizes outputs with metadata for easy review
+
+## 🎨 Synthwave GUI Interface
+
+The application features a stunning synthwave-themed GUI with three main tabs for seamless workflow management:
+
+### 🔍 **SCAN SETUP Tab**
+*Your mission control for the entire pipeline*
+
+- **Reddit Configuration**: Select target subreddits and configure scanning parameters
+- **LLM Integration**: Set up LMStudio connection and prompt transformation settings
+- **Auto-Execution**: Enable automatic ComfyUI processing after content collection
+- **Real-time Progress**: Live progress bars and detailed operation logs
+- **Session Management**: Start, stop, and monitor complete pipeline runs
+
+### ⚙️ **COMFYUI CONFIG Tab**
+*Advanced workflow configuration and script management*
+
+- **Script Analysis**: Automatic detection and parsing of ComfyUI workflow scripts
+- **Parameter Mapping**: Visual configuration of script inputs and prompt variables
+- **Workflow Validation**: Real-time validation of script compatibility and parameters
+- **Template Management**: Save and load different ComfyUI workflow configurations
+- **Debug Tools**: Advanced troubleshooting and script testing capabilities
+
+### 🖼️ **GALLERY Tab**
+*Visual management of your generated designs*
+
+- **File Browser**: Navigate and organize all generated outputs and source images
+- **Image Viewer**: High-quality preview of generated t-shirt designs
+- **Metadata Display**: View detailed information about each design's creation process
+- **Export Tools**: Easy access to files for printing or further editing
+- **GIMP Integration**: Direct launch of designs in GIMP for advanced editing
+
+> **✨ Visual Design**: The interface features vibrant neon colors, glowing borders, and smooth animations that create an immersive synthwave experience while maintaining professional functionality.
 
 ## 🛠️ Installation
 
@@ -82,10 +117,22 @@ LMSTUDIO_MODEL=llama-3.2-1b-instruct
 
 ## 🚀 Quick Start
 
-### Basic Usage
+### Launch the Synthwave GUI
 
 ```bash
-# Run the complete pipeline
+# Start the GUI application
+python synthwave_gui.py
+```
+
+The application will launch with the synthwave-themed interface where you can:
+1. Configure your Reddit scanning preferences in the **SCAN SETUP** tab
+2. Set up your ComfyUI workflows in the **COMFYUI CONFIG** tab
+3. View and manage generated designs in the **GALLERY** tab
+
+### Command Line Usage (Legacy)
+
+```bash
+# Run the complete pipeline via command line
 python run_poc.py
 
 # Test individual components
@@ -112,7 +159,9 @@ python tshirt_executor.py --single-prompt "Your design prompt here"
 
 ```
 Reddit-to-ComfyUI-Pipeline/
-├── 📄 run_poc.py                 # Main workflow orchestrator
+├── 🖥️ synthwave_gui.py           # Main GUI Application (START HERE)
+├── 📄 run_poc.py                 # Command line workflow orchestrator
+├── 🔧 script_analyzer.py         # ComfyUI script analysis and configuration
 ├── 🤖 reddit_collector.py        # Reddit API integration
 ├── 🧠 llm_transformer.py         # LLM prompt processing
 ├── 🖼️ image_handler.py           # Image downloading & processing
@@ -122,7 +171,8 @@ Reddit-to-ComfyUI-Pipeline/
 ├── 📊 extract_prompts.py         # Prompt extraction utility
 ├── 🚀 deploy_to_comfyui.py       # Environment deployment
 ├── 📖 DEPLOYMENT_GUIDE.md        # Detailed setup instructions
-└── 📋 requirements.txt           # Python dependencies
+├── 📋 requirements.txt           # Python dependencies
+└── 📁 script_configs/            # ComfyUI workflow configurations
 ```
 
 ## 🎯 Workflow Examples
