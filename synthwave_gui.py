@@ -3435,13 +3435,13 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
                 try:
                     if gimp_path == 'gimp':
                         # Try system PATH - launch in background
-                        subprocess.Popen([gimp_path, file_path])
+                        subprocess.Popen([gimp_path, file_path], cwd=str(Path.home()))
                         gimp_found = True
                         print(f"[INFO] Launched GIMP from PATH: {file_path}")
                         break
                     elif Path(gimp_path).exists():
                         # Try specific path - launch in background
-                        subprocess.Popen([gimp_path, file_path])
+                        subprocess.Popen([gimp_path, file_path], cwd=str(Path.home()))
                         gimp_found = True
                         print(f"[INFO] Launched GIMP from {gimp_path}: {file_path}")
                         break
