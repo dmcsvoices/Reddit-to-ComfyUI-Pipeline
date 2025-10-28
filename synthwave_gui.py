@@ -3546,7 +3546,11 @@ Modified: {mod_str}"""
                     if isinstance(model, dict):
                         model_key = model.get('key', model.get('name', str(model)))
                     else:
-                        model_key = str(model)
+                        # Try to extract model_key attribute if it exists (for DownloadedLlm objects)
+                        if hasattr(model, 'model_key'):
+                            model_key = model.model_key
+                        else:
+                            model_key = str(model)
                     model_names.append(model_key)
 
                 # Update available models
