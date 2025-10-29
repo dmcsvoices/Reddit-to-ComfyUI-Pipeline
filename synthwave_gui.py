@@ -3188,9 +3188,9 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
                     image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'}
                     for image_file in folder.iterdir():
                         if image_file.is_file() and image_file.suffix.lower() in image_extensions:
-                            # Add to list with folder prefix for organization
+                            # Add to list - showing just filename for better visibility
                             folder_name = folder.name
-                            display_name = f"[{folder_name}] {image_file.name}"
+                            display_name = image_file.name
 
                             new_gallery_images.append({
                                 'display_name': display_name,
@@ -3442,6 +3442,18 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
             import os
             from pathlib import Path
 
+            # Check if file exists before trying to launch GIMP
+            file_path_obj = Path(file_path)
+            if not file_path_obj.exists():
+                error_msg = f"File not found: {file_path}"
+                messagebox.showerror("File Not Found", error_msg)
+                print(f"[ERROR] {error_msg}")
+                return
+
+            print(f"[DEBUG] Opening with GIMP: {file_path}")
+            print(f"[DEBUG] File exists: {file_path_obj.exists()}")
+            print(f"[DEBUG] Current working directory: {os.getcwd()}")
+
             # Common GIMP executable names and paths by platform
             gimp_paths = []
 
@@ -3477,13 +3489,13 @@ suitable for t-shirt printing, 768x1024 pixels, 300 DPI, RGB, transparent backgr
                 try:
                     if gimp_path == 'gimp':
                         # Try system PATH - launch in background
-                        subprocess.Popen([gimp_path, file_path], cwd=str(Path.home()))
+                        subprocess.Popen([gimp_path, file_path])
                         gimp_found = True
                         print(f"[INFO] Launched GIMP from PATH: {file_path}")
                         break
                     elif Path(gimp_path).exists():
                         # Try specific path - launch in background
-                        subprocess.Popen([gimp_path, file_path], cwd=str(Path.home()))
+                        subprocess.Popen([gimp_path, file_path])
                         gimp_found = True
                         print(f"[INFO] Launched GIMP from {gimp_path}: {file_path}")
                         break
