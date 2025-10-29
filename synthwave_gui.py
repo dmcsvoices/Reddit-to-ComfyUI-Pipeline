@@ -261,6 +261,7 @@ class SynthwaveGUI:
 
         # Backend instances
         self.llm_transformer = None
+        self.current_model_instance = None  # Track the loaded model instance
         self.comfyui = None
         self.file_organizer = None
 
@@ -427,14 +428,10 @@ class SynthwaveGUI:
             print("❌ File organizer not available")
             self.file_organizer = None
 
-        # Initialize LLM transformer
+        # Initialize LLM transformer - will be created when model is loaded
         if LLM_AVAILABLE:
-            try:
-                self.llm_transformer = TShirtPromptTransformer()
-                print("✅ LLM transformer initialized")
-            except Exception as e:
-                print(f"❌ LLM transformer failed: {e}")
-                self.llm_transformer = None
+            print("✅ LLM functionality available - transformer will be created when model is loaded")
+            self.llm_transformer = None  # Will be created with model instance in load_selected_model()
         else:
             print("❌ LLM transformer not available (demo mode)")
             self.llm_transformer = None
@@ -3618,8 +3615,20 @@ Modified: {mod_str}"""
             print(f"[INFO] Loading model: {selected_model}")
             model_instance = lms.llm(selected_model)
 
+            # Store the model instance
+            self.current_model_instance = model_instance
+
             # Update the current model display
             self.current_model_var.set(selected_model)
+
+            # Update the transformer to use the new model instance
+            if self.llm_transformer:
+                self.llm_transformer.update_model(model_instance, selected_model)
+                print(f"[INFO] Updated transformer with new model: {selected_model}")
+            else:
+                # Create new transformer with the model instance
+                self.llm_transformer = TShirtPromptTransformer(model_instance=model_instance)
+                print(f"[INFO] Created new transformer with model: {selected_model}")
 
             # Update status
             self.model_status_label.config(
@@ -3627,11 +3636,7 @@ Modified: {mod_str}"""
                 fg=SynthwaveColors.SUCCESS
             )
 
-            print(f"[SUCCESS] Model loaded: {selected_model}")
-
-            # TODO: Update the transformer instance to use the new model
-            # This would require refactoring the TShirtPromptTransformer to accept model instance
-            # For now, the model will be loaded for future use
+            print(f"[SUCCESS] Model loaded and transformer updated: {selected_model}")
 
         except ImportError:
             self.model_status_label.config(

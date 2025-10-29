@@ -5,31 +5,104 @@ from datetime import datetime
 import os
 
 class TShirtPromptTransformer:
-    def __init__(self, model_name="qwen/qwen3-vl-30b@4bit", output_dir="./poc_output/prompts", use_vision=True):
-        try:
-            self.model = lms.llm(model_name)
-            self.use_vision = use_vision
-            print(f"✅ Connected to LMStudio model: {model_name}")
+    def __init__(self, model_instance=None, model_name="qwen/qwen3-vl-30b@4bit", output_dir="./poc_output/prompts", use_vision=True):
+        """
+        Initialize transformer with either an external model instance or by creating one
+
+        Args:
+            model_instance: Pre-loaded LMStudio model instance (preferred)
+            model_name: Model name to load if model_instance is None (fallback)
+            output_dir: Directory for saving prompts
+            use_vision: Enable vision/multimodal capabilities
+        """
+        self.model_name = model_name
+        self.use_vision = use_vision
+
+        if model_instance is not None:
+            # Use provided model instance
+            self.model = model_instance
+            print(f"✅ Using provided LMStudio model instance")
             if use_vision:
                 print("🔍 Vision mode enabled - will process images when available")
-        except Exception as e:
-            print(f"❌ Failed to connect to LMStudio: {str(e)}")
-            print("Make sure LMStudio is running and the model is loaded")
-            self.model = None
-            self.use_vision = False
+        else:
+            # Fallback: create model instance
+            try:
+                self.model = lms.llm(model_name)
+                print(f"✅ Connected to LMStudio model: {model_name}")
+                if use_vision:
+                    print("🔍 Vision mode enabled - will process images when available")
+            except Exception as e:
+                print(f"❌ Failed to connect to LMStudio: {str(e)}")
+                print("Make sure LMStudio is running and the model is loaded")
+                self.model = None
+                self.use_vision = False
 
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def update_model(self, model_instance, model_name=None):
+        """Update the model instance used by the transformer
+
+        Args:
+            model_instance: New LMStudio model instance
+            model_name: Optional model name for tracking
+        """
+        self.model = model_instance
+        if model_name:
+            self.model_name = model_name
+        print(f"✅ Model updated: {model_name or 'instance provided'}")
+
+    def validate_model(self):
+        """Validate that the model is available and responsive
+
+        Returns:
+            bool: True if model is valid, False otherwise
+        """
+        if not self.model:
+            print("❌ Model validation failed: No model instance")
+            return False
+
+        try:
+            # Simple validation check by attempting a minimal response
+            test_response = self.model.respond("Test")
+            return True
+        except Exception as e:
+            print(f"❌ Model validation failed: {str(e)}")
+            return False
+
+    def reconnect_model(self):
+        """Attempt to reconnect to the model using the stored model name
+
+        Returns:
+            bool: True if reconnection successful, False otherwise
+        """
+        if not self.model_name:
+            print("❌ Cannot reconnect: No model name stored")
+            return False
+
+        try:
+            print(f"🔄 Attempting to reconnect to model: {self.model_name}")
+            self.model = lms.llm(self.model_name)
+            print(f"✅ Model reconnected successfully: {self.model_name}")
+            return True
+        except Exception as e:
+            print(f"❌ Model reconnection failed: {str(e)}")
+            self.model = None
+            return False
+
     def transform_reddit_to_tshirt_prompt(self, trend_data):
         """Transform Reddit trend into optimized ComfyUI t-shirt design prompt with optional image analysis"""
 
-        if not self.model:
-            return {
-                "success": False,
-                "error": "LMStudio model not available",
-                "trend_id": trend_data['id']
-            }
+        # Validate model before proceeding
+        if not self.validate_model():
+            # Attempt reconnection if validation fails
+            print("🔄 Model validation failed, attempting reconnection...")
+            if not self.reconnect_model():
+                return {
+                    "success": False,
+                    "error": "LMStudio model not available - validation and reconnection failed",
+                    "trend_id": trend_data['id']
+                }
 
         # Check if we have images to analyze
         has_images = self.use_vision and trend_data.get('images') and len(trend_data['images']) > 0
