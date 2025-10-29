@@ -12,6 +12,7 @@ import queue
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import glob
@@ -274,6 +275,7 @@ class SynthwaveGUI:
         self.current_model_instance = None  # Track the loaded model instance
         self.current_model_state = ModelState.UNLOADED  # Track model lifecycle state
         self.default_fallback_model = "qwen/qwen3-vl-30b@4bit"  # Default model for fallback
+        self.config_file = Path("model_preferences.json")  # Configuration file
         self.comfyui = None
         self.file_organizer = None
 
@@ -323,6 +325,13 @@ class SynthwaveGUI:
             print("⚙️ Starting queue processing...")
             # Start queue processing
             self.process_queue()
+
+            # Set up cleanup on window close
+            self.root.protocol("WM_DELETE_WINDOW", self.on_window_close)
+
+            # Attempt to restore model session from previous run
+            if LLM_AVAILABLE:
+                self.root.after(1000, self.restore_model_session, self.model_config)
 
             print("🚀 Starting main loop...")
             # Start the main loop
@@ -447,6 +456,10 @@ class SynthwaveGUI:
         else:
             print("❌ LLM transformer not available (demo mode)")
             self.llm_transformer = None
+
+        # Load model preferences and attempt session restoration
+        self.model_config = self.load_model_preferences()
+        print(f"[CONFIG] Loaded configuration: {self.model_config.get('last_selected_model', 'None')}")
 
         # ComfyUI-SaveAsScript approach - no initialization needed
         self.comfyui = None  # Not needed - we execute scripts directly
@@ -3663,6 +3676,9 @@ Modified: {mod_str}"""
             # Set loaded state
             self.set_model_state(ModelState.LOADED, f"Successfully loaded {selected_model}")
 
+            # Save model preferences after successful load
+            self.save_model_preferences()
+
             print(f"[SUCCESS] Model loaded and transformer updated: {selected_model}")
 
         except ImportError:
@@ -3930,6 +3946,185 @@ Modified: {mod_str}"""
         )
 
         return False
+
+    def save_model_preferences(self):
+        """Save current model preferences and state to config file"""
+        try:
+            config = {
+                "last_selected_model": self.current_model_var.get() if hasattr(self, 'current_model_var') else None,
+                "model_state": self.current_model_state,
+                "default_fallback_model": self.default_fallback_model,
+                "last_session_timestamp": datetime.now().isoformat(),
+                "available_models": getattr(self, 'available_models', []),
+                "auto_load_last_model": True  # Feature flag for auto-loading
+            }
+
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+
+            print(f"[CONFIG] Model preferences saved to {self.config_file}")
+
+        except Exception as e:
+            print(f"[CONFIG ERROR] Failed to save model preferences: {e}")
+
+    def load_model_preferences(self):
+        """Load model preferences and attempt to restore previous state
+
+        Returns:
+            dict: Loaded configuration or default config
+        """
+        default_config = {
+            "last_selected_model": None,
+            "model_state": ModelState.UNLOADED,
+            "default_fallback_model": self.default_fallback_model,
+            "auto_load_last_model": True,
+            "available_models": []
+        }
+
+        try:
+            if not self.config_file.exists():
+                print("[CONFIG] No previous configuration found, using defaults")
+                return default_config
+
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            print(f"[CONFIG] Loaded model preferences from {self.config_file}")
+
+            # Validate and merge with defaults
+            for key, default_value in default_config.items():
+                if key not in config:
+                    config[key] = default_value
+
+            # Update fallback model if it was customized
+            if config.get("default_fallback_model"):
+                self.default_fallback_model = config["default_fallback_model"]
+
+            return config
+
+        except Exception as e:
+            print(f"[CONFIG ERROR] Failed to load model preferences: {e}")
+            return default_config
+
+    def restore_model_session(self, config):
+        """Restore model session from saved configuration
+
+        Args:
+            config: Configuration dictionary from load_model_preferences
+        """
+        try:
+            last_model = config.get("last_selected_model")
+
+            if not last_model or not config.get("auto_load_last_model", True):
+                print("[SESSION] Auto-load disabled or no previous model to restore")
+                return
+
+            # Clean up model name if it has fallback indicator
+            if last_model and "(fallback)" in last_model:
+                last_model = last_model.replace(" (fallback)", "")
+
+            print(f"[SESSION] Attempting to restore last model: {last_model}")
+
+            # Check if the model is still available
+            self.refresh_available_models()
+
+            if hasattr(self, 'available_models') and last_model in self.available_models:
+                # Set the model in the dropdown
+                if hasattr(self, 'model_combobox'):
+                    self.model_combobox.set(last_model)
+
+                # Attempt to load the model in background
+                self.root.after(2000, self.attempt_model_preload, last_model)
+            else:
+                print(f"[SESSION] Last model '{last_model}' no longer available")
+                self.show_user_notification(
+                    "Model Unavailable",
+                    f"Previously used model '{last_model}' is no longer available.",
+                    "info"
+                )
+
+        except Exception as e:
+            print(f"[SESSION ERROR] Failed to restore model session: {e}")
+
+    def attempt_model_preload(self, model_name):
+        """Attempt to preload a model for faster subsequent use
+
+        Args:
+            model_name: Name of the model to preload
+        """
+        try:
+            if self.current_model_state != ModelState.UNLOADED:
+                print("[PRELOAD] Model already loaded, skipping preload")
+                return
+
+            print(f"[PRELOAD] Attempting to preload model: {model_name}")
+            self.set_model_state(ModelState.LOADING, f"Preloading {model_name}...")
+
+            # Import lmstudio to load the model
+            import lmstudio as lms
+
+            # Load the model instance
+            model_instance = lms.llm(model_name)
+
+            # Store the model instance
+            self.current_model_instance = model_instance
+
+            # Update the current model display
+            self.current_model_var.set(model_name)
+
+            # Create transformer with the model instance
+            self.llm_transformer = TShirtPromptTransformer(model_instance=model_instance)
+
+            # Set loaded state
+            self.set_model_state(ModelState.LOADED, f"Preloaded {model_name}")
+
+            print(f"[PRELOAD] Successfully preloaded model: {model_name}")
+
+            # Show subtle notification
+            if hasattr(self, 'write_to_scan_results'):
+                self.write_to_scan_results(f"✅ Model preloaded: {model_name}")
+
+        except Exception as e:
+            print(f"[PRELOAD ERROR] Failed to preload model {model_name}: {e}")
+            self.set_model_state(ModelState.FAILED, f"Preload failed: {str(e)}")
+
+            # Try fallback model if preload fails
+            if model_name != self.default_fallback_model:
+                print(f"[PRELOAD] Attempting fallback model: {self.default_fallback_model}")
+                self.root.after(1000, self.attempt_model_preload, self.default_fallback_model)
+
+    def cleanup_and_save_on_exit(self):
+        """Clean up resources and save state before application exit"""
+        try:
+            print("[EXIT] Cleaning up and saving state...")
+
+            # Save current model preferences
+            self.save_model_preferences()
+
+            # Clean up model resources
+            self.cleanup_model_resources()
+
+            # Additional cleanup can be added here
+            print("[EXIT] Cleanup completed")
+
+        except Exception as e:
+            print(f"[EXIT ERROR] Error during cleanup: {e}")
+
+    def on_window_close(self):
+        """Handle window close event with proper cleanup"""
+        try:
+            print("[WINDOW CLOSE] Application closing...")
+
+            # Save state and clean up
+            self.cleanup_and_save_on_exit()
+
+            # Destroy the window
+            self.root.destroy()
+
+        except Exception as e:
+            print(f"[WINDOW CLOSE ERROR] Error during window close: {e}")
+            # Force close even if cleanup fails
+            self.root.destroy()
 
 
 def main():
