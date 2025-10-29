@@ -219,11 +219,169 @@ Output only the ComfyUI prompt text for VISUAL GRAPHICS, no other explanation.
             }
 
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "trend_id": trend_data['id']
-            }
+            error_msg = str(e)
+
+            # Check for specific model-related errors that might be recoverable
+            if any(keyword in error_msg.lower() for keyword in ['model not found', 'connection', 'timeout', 'network']):
+                print(f"🔄 Detected recoverable model error: {error_msg}")
+
+                # Attempt to reconnect and retry once
+                if self.reconnect_model():
+                    print("🔄 Retrying transformation after model reconnection...")
+                    try:
+                        # Retry the transformation with the reconnected model
+                        return self._retry_transformation(trend_data)
+                    except Exception as retry_error:
+                        print(f"❌ Retry failed: {retry_error}")
+                        return {
+                            "success": False,
+                            "error": f"Initial error: {error_msg}. Retry after reconnection also failed: {str(retry_error)}",
+                            "trend_id": trend_data['id'],
+                            "recovery_attempted": True
+                        }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Model error (reconnection failed): {error_msg}",
+                        "trend_id": trend_data['id'],
+                        "recovery_attempted": True
+                    }
+            else:
+                # Non-recoverable error
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "trend_id": trend_data['id'],
+                    "recovery_attempted": False
+                }
+
+    def _retry_transformation(self, trend_data):
+        """Retry transformation with current model (used after reconnection)
+
+        Args:
+            trend_data: The trend data to transform
+
+        Returns:
+            dict: Transformation result
+        """
+        # Re-validate model before retry
+        if not self.validate_model():
+            raise Exception("Model validation failed after reconnection")
+
+        # Check if we have images to analyze (same logic as main method)
+        has_images = self.use_vision and trend_data.get('images') and len(trend_data['images']) > 0
+        image_analysis = ""
+
+        if has_images:
+            image_path = trend_data['images'][0]
+            try:
+                image_analysis = self.analyze_image(image_path)
+                print(f"🔍 Re-analyzed image: {os.path.basename(image_path)}")
+            except Exception as e:
+                print(f"⚠️  Image re-analysis failed: {str(e)}")
+                has_images = False
+
+        # Determine the source of text content
+        text_content = trend_data.get('text_content', 'N/A')
+        title = trend_data['title']
+        text_source = "extracted" if text_content != title else "title"
+
+        transformation_prompt = f"""
+You are a professional t-shirt design prompt engineer. Transform this Reddit trend into a detailed ComfyUI prompt for generating a trendy visual t-shirt design.
+
+Reddit Content:
+- Title: {title}
+- Text Content: {text_content} (source: {text_source})
+- Popularity Score: {trend_data['score']}
+- Content Type: {"Image + Text" if has_images else "Text-only post"}{"" if not has_images else f'''
+- Image Analysis: {image_analysis}'''}
+
+Requirements for the ComfyUI visual design prompt:
+- Create a VISUAL GRAPHIC design, not just text
+- Include illustrations, characters, symbols, or visual elements that represent the trend{"" if not has_images else '''
+- INCORPORATE visual elements and themes from the analyzed image'''}
+- Combine visual elements with minimal text if needed
+- Must be suitable for t-shirt printing (768x1024px, high contrast, bold graphics)
+- Include specific art style (cartoon, minimalist, retro, modern, etc.)
+- Specify colors, composition, and visual hierarchy
+- Make it commercially appealing and trendy
+- Focus on creating an engaging visual that captures the essence of the trend{"" if not has_images else " and the visual content from the image"}
+- Include technical specs: "768x1024 pixels, 300 DPI, RGB, transparent background"
+- Specify artistic style (vector art, illustration, graphic design, etc.)
+
+Output only the ComfyUI prompt text for VISUAL GRAPHICS, no other explanation.
+"""
+
+        # Get LLM response - use vision if we have images
+        if has_images:
+            image_path = trend_data['images'][0]
+            image_handle = lms.prepare_image(image_path)
+            chat = lms.Chat()
+            chat.add_user_message(transformation_prompt, images=[image_handle])
+            response = self.model.respond(chat)
+        else:
+            response = self.model.respond(transformation_prompt)
+
+        # Extract text from response object
+        comfyui_prompt = str(response) if hasattr(response, '__str__') else response.text
+
+        # Save prompt as markdown file (same logic as main method)
+        prompt_id = f"prompt_{trend_data['id']}_{int(datetime.now().timestamp())}_retry"
+        prompt_file = self.output_dir / f"{prompt_id}.md"
+
+        # Create detailed prompt file
+        image_info = ""
+        if has_images:
+            image_info = f"""
+## Image Analysis
+- **Source Image**: {os.path.basename(trend_data['images'][0])}
+- **Vision Model Used**: Yes (multimodal generation)
+- **Image Analysis**: {image_analysis if image_analysis else 'Visual elements incorporated'}
+"""
+
+        prompt_content = f"""# T-Shirt Design Prompt ({"Multimodal" if has_images else "Text-Only"}) - RETRY
+
+## Source Information
+- **Reddit ID**: {trend_data['id']}
+- **Original Title**: {trend_data['title']}
+- **Text Content**: {trend_data.get('text_content', 'N/A')}
+- **Popularity Score**: {trend_data['score']}
+- **Generated**: {datetime.now().isoformat()}
+- **Generation Type**: {"Vision + Text" if has_images else "Text Only"} (Retry after reconnection){image_info}
+
+## ComfyUI Prompt
+
+```
+{comfyui_prompt.strip()}
+```
+
+## Technical Specifications
+- **Dimensions**: 768x1024 pixels
+- **Resolution**: 300 DPI
+- **Color Mode**: RGB
+- **Background**: Transparent
+- **Format**: PNG
+- **Design Type**: {"Visual graphic with image-inspired elements" if has_images else "Visual graphic design"}
+
+## Notes
+- Optimized for Threadless Artist Shop requirements
+- Generated via LMStudio LLM transformation{"" if not has_images else " with vision model"}
+- {"Image-informed design based on Reddit post visual content" if has_images else "Text-based design generation"}
+- **RETRY**: This prompt was generated after model reconnection
+"""
+
+        # Save the markdown file
+        with open(prompt_file, 'w', encoding='utf-8') as f:
+            f.write(prompt_content)
+
+        return {
+            "success": True,
+            "prompt_id": prompt_id,
+            "comfyui_prompt": comfyui_prompt.strip(),
+            "prompt_file": str(prompt_file),
+            "trend_id": trend_data['id'],
+            "retry_success": True
+        }
 
     def batch_transform(self, trends_list):
         """Transform multiple trends into ComfyUI prompts"""

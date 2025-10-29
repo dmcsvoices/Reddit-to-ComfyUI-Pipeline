@@ -273,6 +273,7 @@ class SynthwaveGUI:
         self.llm_transformer = None
         self.current_model_instance = None  # Track the loaded model instance
         self.current_model_state = ModelState.UNLOADED  # Track model lifecycle state
+        self.default_fallback_model = "qwen/qwen3-vl-30b@4bit"  # Default model for fallback
         self.comfyui = None
         self.file_organizer = None
 
@@ -2752,12 +2753,14 @@ class SynthwaveGUI:
         try:
             # Perform model health check before starting batch transformation
             if not self.refresh_model_connection():
-                self.queue.put({
-                    'type': 'transform_complete',
-                    'total_processed': 0,
-                    'error': 'Model health check failed - cannot proceed with transformation'
-                })
-                return
+                # Try enhanced error recovery before giving up
+                if not self.enhanced_model_error_recovery("transformation_start"):
+                    self.queue.put({
+                        'type': 'transform_complete',
+                        'total_processed': 0,
+                        'error': 'Model health check failed - cannot proceed with transformation'
+                    })
+                    return
 
             # Mark model as active for transformation batch
             self.set_model_state(ModelState.ACTIVE, "Processing transformation batch...")
@@ -3666,9 +3669,31 @@ Modified: {mod_str}"""
             self.set_model_state(ModelState.FAILED, "LMStudio not available")
             print("[ERROR] lmstudio package not found")
 
+            self.show_user_notification(
+                "LMStudio Not Available",
+                "LMStudio package not found. Please install it with:\npip install lmstudio",
+                "error"
+            )
+
         except Exception as e:
-            self.set_model_state(ModelState.FAILED, f"Failed to load {selected_model} - {str(e)}")
+            error_msg = str(e)
             print(f"[ERROR] Failed to load model {selected_model}: {e}")
+
+            # Check if this is a recoverable error and attempt fallback
+            if any(keyword in error_msg.lower() for keyword in ['model not found', 'connection', 'timeout', 'network']):
+                print(f"[ERROR RECOVERY] Detected recoverable error, attempting fallback...")
+
+                if not self.attempt_fallback_model():
+                    # Fallback also failed
+                    self.set_model_state(ModelState.FAILED, f"Failed to load {selected_model} and fallback failed")
+            else:
+                # Non-recoverable error
+                self.set_model_state(ModelState.FAILED, f"Failed to load {selected_model} - {error_msg}")
+                self.show_user_notification(
+                    "Model Load Error",
+                    f"Failed to load model: {selected_model}\nError: {error_msg}",
+                    "error"
+                )
 
     def set_model_state(self, state, message=None):
         """Update model state and display status
@@ -3776,6 +3801,135 @@ Modified: {mod_str}"""
             print(f"[MODEL REFRESH] Failed to refresh model connection: {e}")
             self.set_model_state(ModelState.FAILED, f"Refresh failed: {str(e)}")
             return False
+
+    def attempt_fallback_model(self):
+        """Attempt to load fallback model when selected model fails
+
+        Returns:
+            bool: True if fallback successful, False otherwise
+        """
+        try:
+            if not self.default_fallback_model:
+                print("[FALLBACK] No default fallback model configured")
+                return False
+
+            print(f"[FALLBACK] Attempting to load fallback model: {self.default_fallback_model}")
+            self.set_model_state(ModelState.LOADING, f"Loading fallback model: {self.default_fallback_model}")
+
+            # Import lmstudio to load the fallback model
+            import lmstudio as lms
+
+            # Load the fallback model instance
+            fallback_instance = lms.llm(self.default_fallback_model)
+
+            # Store the model instance
+            self.current_model_instance = fallback_instance
+
+            # Update the transformer to use the fallback model
+            if self.llm_transformer:
+                self.llm_transformer.update_model(fallback_instance, self.default_fallback_model)
+            else:
+                # Create new transformer with the fallback model
+                self.llm_transformer = TShirtPromptTransformer(model_instance=fallback_instance)
+
+            # Update the current model display to show fallback
+            self.current_model_var.set(f"{self.default_fallback_model} (fallback)")
+
+            # Set loaded state with fallback indication
+            self.set_model_state(ModelState.LOADED, f"Fallback model loaded: {self.default_fallback_model}")
+
+            print(f"[FALLBACK] Successfully loaded fallback model: {self.default_fallback_model}")
+
+            # Show user notification about fallback
+            self.show_user_notification(
+                "Model Fallback",
+                f"Selected model failed to load. Using fallback model:\n{self.default_fallback_model}",
+                "warning"
+            )
+
+            return True
+
+        except Exception as e:
+            print(f"[FALLBACK] Failed to load fallback model: {e}")
+            self.set_model_state(ModelState.FAILED, f"Fallback model failed: {str(e)}")
+
+            # Show error notification
+            self.show_user_notification(
+                "Model Error",
+                f"Both selected and fallback models failed to load.\nPlease check LMStudio status.",
+                "error"
+            )
+
+            return False
+
+    def show_user_notification(self, title, message, type="info"):
+        """Show user notification with model state information
+
+        Args:
+            title: Notification title
+            message: Notification message
+            type: Notification type ("info", "warning", "error")
+        """
+        try:
+            # Log to console
+            print(f"[USER NOTIFICATION] {title}: {message}")
+
+            # Log to scan results for user visibility
+            if hasattr(self, 'write_to_scan_results'):
+                icon = "ℹ️" if type == "info" else "⚠️" if type == "warning" else "❌"
+                self.write_to_scan_results(f"{icon} {title}: {message}")
+
+            # Show message box for important notifications
+            if type == "error":
+                messagebox.showerror(title, message)
+            elif type == "warning":
+                messagebox.showwarning(title, message)
+            else:
+                messagebox.showinfo(title, message)
+
+        except Exception as e:
+            print(f"[ERROR] Failed to show user notification: {e}")
+
+    def enhanced_model_error_recovery(self, error_context="unknown"):
+        """Enhanced error recovery with multiple fallback strategies
+
+        Args:
+            error_context: Context where the error occurred
+
+        Returns:
+            bool: True if recovery successful, False otherwise
+        """
+        print(f"[ERROR RECOVERY] Starting recovery for context: {error_context}")
+
+        # Strategy 1: Try to refresh current model connection
+        if self.refresh_model_connection():
+            print("[ERROR RECOVERY] Recovery successful via model refresh")
+            self.show_user_notification(
+                "Model Recovery",
+                "Model connection restored successfully.",
+                "info"
+            )
+            return True
+
+        # Strategy 2: Try fallback model
+        if self.attempt_fallback_model():
+            print("[ERROR RECOVERY] Recovery successful via fallback model")
+            return True
+
+        # Strategy 3: Reset to clean state and notify user
+        print("[ERROR RECOVERY] All recovery strategies failed")
+        self.set_model_state(ModelState.FAILED, "All recovery attempts failed")
+
+        self.show_user_notification(
+            "Model Recovery Failed",
+            "Unable to recover model connection. Please:\n"
+            "1. Check that LMStudio is running\n"
+            "2. Verify models are available\n"
+            "3. Try manually loading a model",
+            "error"
+        )
+
+        return False
 
 
 def main():
