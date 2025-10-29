@@ -98,6 +98,16 @@ class SynthwaveColors:
     HIGHLIGHT = "#ff33a1"
 
 
+class ModelState:
+    """Model lifecycle states"""
+    UNLOADED = "unloaded"
+    LOADING = "loading"
+    LOADED = "loaded"
+    ACTIVE = "active"      # Currently being used
+    FAILED = "failed"
+    RECONNECTING = "reconnecting"
+
+
 class SplashScreen:
     """Synthwave-themed splash screen with loading animation"""
 
@@ -262,6 +272,7 @@ class SynthwaveGUI:
         # Backend instances
         self.llm_transformer = None
         self.current_model_instance = None  # Track the loaded model instance
+        self.current_model_state = ModelState.UNLOADED  # Track model lifecycle state
         self.comfyui = None
         self.file_organizer = None
 
@@ -2739,6 +2750,18 @@ class SynthwaveGUI:
     def run_transform_all(self):
         """Transform all scan results to prompts in background thread"""
         try:
+            # Perform model health check before starting batch transformation
+            if not self.refresh_model_connection():
+                self.queue.put({
+                    'type': 'transform_complete',
+                    'total_processed': 0,
+                    'error': 'Model health check failed - cannot proceed with transformation'
+                })
+                return
+
+            # Mark model as active for transformation batch
+            self.set_model_state(ModelState.ACTIVE, "Processing transformation batch...")
+
             total_posts = len(self.current_scan_results)
             successful_transforms = 0
 
@@ -2802,12 +2825,18 @@ class SynthwaveGUI:
                 # Simulate processing time
                 time.sleep(1)
 
+            # Clean up model resources after batch completion
+            self.cleanup_model_resources()
+
             self.queue.put({
                 'type': 'transform_complete',
                 'total_processed': successful_transforms
             })
 
         except Exception as e:
+            # Clean up resources even on failure
+            self.cleanup_model_resources()
+
             self.queue.put({
                 'type': 'error',
                 'error': f"Transformation failed: {str(e)}"
@@ -3602,10 +3631,8 @@ Modified: {mod_str}"""
                 )
                 return
 
-            self.model_status_label.config(
-                text=f"Status: Loading {selected_model}...",
-                fg=SynthwaveColors.WARNING
-            )
+            # Set loading state
+            self.set_model_state(ModelState.LOADING, f"Loading {selected_model}...")
             self.root.update_idletasks()
 
             # Import lmstudio to load the model
@@ -3630,27 +3657,125 @@ Modified: {mod_str}"""
                 self.llm_transformer = TShirtPromptTransformer(model_instance=model_instance)
                 print(f"[INFO] Created new transformer with model: {selected_model}")
 
-            # Update status
-            self.model_status_label.config(
-                text=f"Status: Successfully loaded {selected_model}",
-                fg=SynthwaveColors.SUCCESS
-            )
+            # Set loaded state
+            self.set_model_state(ModelState.LOADED, f"Successfully loaded {selected_model}")
 
             print(f"[SUCCESS] Model loaded and transformer updated: {selected_model}")
 
         except ImportError:
-            self.model_status_label.config(
-                text="Status: LMStudio not available",
-                fg=SynthwaveColors.ERROR
-            )
+            self.set_model_state(ModelState.FAILED, "LMStudio not available")
             print("[ERROR] lmstudio package not found")
 
         except Exception as e:
-            self.model_status_label.config(
-                text=f"Status: Failed to load {selected_model} - {str(e)}",
-                fg=SynthwaveColors.ERROR
-            )
+            self.set_model_state(ModelState.FAILED, f"Failed to load {selected_model} - {str(e)}")
             print(f"[ERROR] Failed to load model {selected_model}: {e}")
+
+    def set_model_state(self, state, message=None):
+        """Update model state and display status
+
+        Args:
+            state: ModelState constant
+            message: Optional custom message for status display
+        """
+        self.current_model_state = state
+
+        # Update status display based on state
+        if hasattr(self, 'model_status_label'):
+            if message:
+                status_text = f"Status: {message}"
+            else:
+                status_text = f"Status: {state.title()}"
+
+            # Set color based on state
+            if state == ModelState.LOADED:
+                color = SynthwaveColors.SUCCESS
+            elif state in [ModelState.LOADING, ModelState.RECONNECTING]:
+                color = SynthwaveColors.WARNING
+            elif state == ModelState.FAILED:
+                color = SynthwaveColors.ERROR
+            elif state == ModelState.ACTIVE:
+                color = SynthwaveColors.NEON_CYAN
+            else:
+                color = SynthwaveColors.TEXT
+
+            self.model_status_label.config(text=status_text, fg=color)
+
+        print(f"[MODEL STATE] {state}: {message or 'State changed'}")
+
+    def validate_model_health(self):
+        """Perform health check on current model
+
+        Returns:
+            bool: True if model is healthy, False otherwise
+        """
+        if self.current_model_state == ModelState.UNLOADED:
+            print("[MODEL HEALTH] No model loaded")
+            return False
+
+        if not self.current_model_instance:
+            print("[MODEL HEALTH] No model instance available")
+            self.set_model_state(ModelState.FAILED, "Model instance lost")
+            return False
+
+        try:
+            if self.llm_transformer and hasattr(self.llm_transformer, 'validate_model'):
+                is_valid = self.llm_transformer.validate_model()
+                if not is_valid:
+                    self.set_model_state(ModelState.FAILED, "Model validation failed")
+                    return False
+                else:
+                    print("[MODEL HEALTH] Model validation passed")
+                    return True
+            else:
+                print("[MODEL HEALTH] No transformer available for validation")
+                return False
+        except Exception as e:
+            print(f"[MODEL HEALTH] Health check failed: {e}")
+            self.set_model_state(ModelState.FAILED, f"Health check failed: {str(e)}")
+            return False
+
+    def cleanup_model_resources(self):
+        """Clean up model resources after use"""
+        try:
+            if self.current_model_state == ModelState.ACTIVE:
+                # Set back to loaded state after use
+                self.set_model_state(ModelState.LOADED, "Model ready for next use")
+                print("[MODEL LIFECYCLE] Model returned to ready state")
+
+            # Note: We don't actually delete the model instance as it may be reused
+            # Just mark it as no longer active
+        except Exception as e:
+            print(f"[MODEL LIFECYCLE] Cleanup warning: {e}")
+
+    def refresh_model_connection(self):
+        """Attempt to refresh/reconnect model if needed
+
+        Returns:
+            bool: True if model is ready, False if failed
+        """
+        try:
+            # Check if we have a valid model
+            if self.validate_model_health():
+                return True
+
+            # If validation failed, try to reconnect
+            if self.llm_transformer and hasattr(self.llm_transformer, 'reconnect_model'):
+                self.set_model_state(ModelState.RECONNECTING, "Attempting to reconnect model...")
+
+                if self.llm_transformer.reconnect_model():
+                    self.set_model_state(ModelState.LOADED, "Model reconnected successfully")
+                    return True
+                else:
+                    self.set_model_state(ModelState.FAILED, "Model reconnection failed")
+                    return False
+            else:
+                print("[MODEL REFRESH] No reconnection method available")
+                return False
+
+        except Exception as e:
+            print(f"[MODEL REFRESH] Failed to refresh model connection: {e}")
+            self.set_model_state(ModelState.FAILED, f"Refresh failed: {str(e)}")
+            return False
 
 
 def main():
